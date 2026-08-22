@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: paycheck-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root   # root 비밀번호
+      MYSQL_DATABASE: paycheck_db      # 초기 자동 생성할 DB 이름
+    ports:
+      - "3308:3306"                      # 로컬 3308 포트 -> 컨테이너 3306 포트 연결
+    volumes:
+      - mysql_data:/var/lib/mysql        # 컨테이너를 지워도 DB 데이터 보존
+
+volumes:
+  mysql_data:

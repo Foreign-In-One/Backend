@@ -1,0 +1,22 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3308/paycheck_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: root
+    password: root
+
+  jpa:
+    hibernate:
+      ddl-auto: update # 개발 초기 초기화 원하면 create
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    defer-datasource-initialization: true # 시드 데이터(data.sql) 사용 시 필수
+
+  sql:
+    init:
+      mode: always # data.sql 실행 활성화 (안 쓸 거면 never 또는 생략)
