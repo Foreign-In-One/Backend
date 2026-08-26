@@ -1,0 +1,34 @@
+# dependencies / build
+.gradle
+.gradle/
+build/
+out/
+target/
+bin/
+*.class
+
+# environment variables
+.env*
+!.env.example
+*.env
+
+# credentials
+credentials/
+*.service-account.json
+
+# uploads
+uploads/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# OS & temporary
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.temp
