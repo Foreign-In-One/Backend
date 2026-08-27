@@ -14,11 +14,13 @@ import com.foreigninone.backend.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -34,24 +36,42 @@ public class AiAgentService {
 
     @Transactional(readOnly = true)
     public AgentPaycheckResponse analyzePaycheckCase(Long paycheckId, PaycheckCaseType inputCaseType) {
+        return analyzePaycheckCase(paycheckId, inputCaseType, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public AgentPaycheckResponse analyzePaycheckCase(Long paycheckId, PaycheckCaseType inputCaseType, String requestLocale, String requestWorkplace) {
         Paycheck paycheck = paycheckRepository.findById(paycheckId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYCHECK_NOT_FOUND));
 
         User user = paycheck.getUser();
         PaycheckCaseType caseType = inputCaseType != null ? inputCaseType : determineCaseType(paycheck);
 
+        String effectiveLocale = (requestLocale != null && !requestLocale.isBlank())
+                ? requestLocale.trim().toLowerCase()
+                : ((user != null && user.getLanguage() != null && !user.getLanguage().isBlank())
+                ? user.getLanguage().trim().toLowerCase()
+                : "ko");
+
+        String effectiveWorkplace = (requestWorkplace != null && !requestWorkplace.isBlank())
+                ? requestWorkplace.trim()
+                : ((user != null && user.getCompanyName() != null && !user.getCompanyName().isBlank())
+                ? user.getCompanyName().trim()
+                : "사업장");
+
         if (openAiProperties.isConfigured()) {
             try {
-                log.info("Calling OpenAI API for paycheckId: {}, caseType: {}", paycheckId, caseType);
-                return callOpenAi(paycheck, user, caseType);
+                log.info("Calling OpenAI API for paycheckId: {}, caseType: {}, locale: {}, workplace: {}",
+                        paycheckId, caseType, effectiveLocale, effectiveWorkplace);
+                return callOpenAi(paycheck, user, caseType, effectiveLocale, effectiveWorkplace);
             } catch (Exception e) {
-                log.warn("OpenAI API call failed, falling back to mock AI agent response: {}", e.getMessage());
+                log.warn("OpenAI API call failed or timed out, falling back to mock AI agent response: {}", e.getMessage());
             }
         } else {
             log.info("OpenAI API key not configured, using mock AI agent for paycheckId: {}", paycheckId);
         }
 
-        return generateMockAgentResponse(paycheck, user, caseType);
+        return generateMockAgentResponse(paycheck, user, caseType, effectiveLocale, effectiveWorkplace);
     }
 
     private PaycheckCaseType determineCaseType(Paycheck paycheck) {
@@ -64,10 +84,9 @@ public class AiAgentService {
         return PaycheckCaseType.NORMAL;
     }
 
-    private AgentPaycheckResponse callOpenAi(Paycheck paycheck, User user, PaycheckCaseType caseType) throws Exception {
-        String prompt = buildPrompt(paycheck, user, caseType);
-        String lang = (user.getLanguage() != null && !user.getLanguage().isBlank()) ? user.getLanguage() : "ko";
-        String nationality = user.getNationality() != null ? user.getNationality() : "외국인";
+    private AgentPaycheckResponse callOpenAi(Paycheck paycheck, User user, PaycheckCaseType caseType, String effectiveLocale, String effectiveWorkplace) throws Exception {
+        String prompt = buildPrompt(paycheck, user, caseType, effectiveLocale, effectiveWorkplace);
+        String nationality = (user != null && user.getNationality() != null) ? user.getNationality() : "외국인";
 
         Map<String, Object> requestBody = Map.of(
                 "model", openAiProperties.getModel(),
@@ -77,7 +96,7 @@ public class AiAgentService {
                                         "규칙:\n" +
                                         "1. '임금체불', '불법공제', '위반' 같은 단정적인 법적 용어를 절대 사용하지 마세요. 대신 '설명이 필요한 차이', '추가 확인 필요' 표현을 사용하세요.\n" +
                                         "2. 없는 숫자를 임의로 계산하거나 추론하지 마세요.\n" +
-                                        "3. employerQuestionCards의 nativeScript는 사용자의 국적/언어(" + nationality + ", " + lang + ")에 맞추어 해당 모국어로 번역하여 작성하세요.\n" +
+                                        "3. employerQuestionCards의 nativeScript는 사용자의 국적/언어(" + nationality + ", " + effectiveLocale + ")에 맞추어 해당 모국어로 번역하여 작성하세요.\n" +
                                         "4. 반드시 아래 JSON 형식으로만 응답하세요.\n" +
                                         "{\n" +
                                         "  \"summary\": \"...\",\n" +
@@ -98,7 +117,12 @@ public class AiAgentService {
                 "temperature", 0.2
         );
 
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(3));
+        requestFactory.setReadTimeout(Duration.ofSeconds(5));
+
         RestClient restClient = RestClient.builder()
+                .requestFactory(requestFactory)
                 .baseUrl(openAiProperties.getBaseUrl())
                 .defaultHeader("Authorization", "Bearer " + openAiProperties.getApiKey())
                 .build();
@@ -159,15 +183,18 @@ public class AiAgentService {
                 .build();
     }
 
-    private String buildPrompt(Paycheck paycheck, User user, PaycheckCaseType caseType) {
+    private String buildPrompt(Paycheck paycheck, User user, PaycheckCaseType caseType, String effectiveLocale, String effectiveWorkplace) {
+        String userName = (user != null && user.getName() != null) ? user.getName() : "근로자";
+        String nationality = (user != null && user.getNationality() != null) ? user.getNationality() : "외국인";
+
         return String.format(
-                "사용자 정보:\n- 이름: %s\n- 국적: %s\n- 사업장: %s\n- 선호 언어: %s\n\n" +
+                "사용자 정보:\n- 이름: %s\n- 국적: %s\n- 사업장: %s\n- 요청 언어: %s\n\n" +
                         "급여 분석 정보:\n- 급여월: %s\n- 계약상 급여: %s원\n- 명세서 실지급액: %s원\n- 실제 입금액: %s원\n- 차액: %s원\n- 판정 케이스: %s\n" +
                         "명세서 등록 여부: %s\n\n위 사실을 바탕으로 사용자에게 친절하고 객관적인 설명, 필요한 서류, 권장 행동, 그리고 사장님께 정중하게 문의할 수 있는 한국어 및 모국어(%s) 질문 카드를 작성해주세요.",
-                user.getName(),
-                user.getNationality() != null ? user.getNationality() : "외국인",
-                user.getCompanyName() != null ? user.getCompanyName() : "회사",
-                user.getLanguage() != null ? user.getLanguage() : "ko",
+                userName,
+                nationality,
+                effectiveWorkplace,
+                effectiveLocale,
                 paycheck.getPayPeriod(),
                 paycheck.getContractAmount() != null ? paycheck.getContractAmount().toPlainString() : "미등록",
                 paycheck.getPayslipAmount() != null ? paycheck.getPayslipAmount().toPlainString() : "미등록",
@@ -175,25 +202,33 @@ public class AiAgentService {
                 paycheck.getDifferenceAmount() != null ? paycheck.getDifferenceAmount().toPlainString() : "0",
                 caseType.name(),
                 paycheck.getPayslipDocument() != null ? "등록됨" : "미등록",
-                user.getLanguage() != null ? user.getLanguage() : "모국어"
+                effectiveLocale
         );
     }
 
-    private AgentPaycheckResponse generateMockAgentResponse(Paycheck paycheck, User user, PaycheckCaseType caseType) {
-        String company = user.getCompanyName() != null ? user.getCompanyName() : "사업장";
+    private AgentPaycheckResponse generateMockAgentResponse(Paycheck paycheck, User user, PaycheckCaseType caseType, String effectiveLocale, String effectiveWorkplace) {
+        String company = effectiveWorkplace;
         long diff = paycheck.getDifferenceAmount() != null ? paycheck.getDifferenceAmount().abs().longValue() : 0L;
         String payPeriod = paycheck.getPayPeriod();
-        String lang = user.getLanguage() != null ? user.getLanguage().toLowerCase() : "ko";
-        String nationality = user.getNationality() != null ? user.getNationality() : "";
+        String lang = effectiveLocale;
+        String nationality = (user != null && user.getNationality() != null) ? user.getNationality() : "";
 
         String nativeDecreaseScript;
-        if ("vi".equals(lang) || nationality.contains("베트남")) {
+        if ("vi".equals(lang)) {
             nativeDecreaseScript = String.format("Xin chào giám đốc, lương tháng %s có chênh lệch %,d won giữa phiếu lương và tiền vào tài khoản, nhờ giám đốc kiểm tra giúp tôi.", payPeriod, diff);
+        } else if ("zh".equals(lang)) {
+            nativeDecreaseScript = String.format("老板您好，%s月份工资实发金额与工资条有%,d韩元的差额，麻烦您确认一下扣除明细。", payPeriod, diff);
         } else if ("en".equals(lang)) {
             nativeDecreaseScript = String.format("Hello sir, there is a difference of %,d KRW in my %s salary deposit compared to the payslip. Could you please check the deduction details?", diff, payPeriod);
-        } else if ("zh".equals(lang) || nationality.contains("중국")) {
+        } else if ("th".equals(lang)) {
+            nativeDecreaseScript = String.format("สวัสดีครับหัวหน้า เงินเดือนเดือน %s มีส่วนต่าง %,d วอน รบกวนช่วยตรวจสอบให้หน่อยครับ", payPeriod, diff);
+        } else if ("ko".equals(lang)) {
+            nativeDecreaseScript = String.format("안녕하세요 대표님, %s 급여 입금액과 명세서에 %,d원 차이가 있어 공제 내역 확인 부탁드립니다.", payPeriod, diff);
+        } else if (nationality.contains("베트남")) {
+            nativeDecreaseScript = String.format("Xin chào giám đốc, lương tháng %s có chênh lệch %,d won giữa phiếu lương và tiền vào tài khoản, nhờ giám đốc kiểm tra giúp tôi.", payPeriod, diff);
+        } else if (nationality.contains("중국")) {
             nativeDecreaseScript = String.format("老板您好，%s月份工资实发金额与工资条有%,d韩元的差额，麻烦您确认一下扣除明细。", payPeriod, diff);
-        } else if ("th".equals(lang) || nationality.contains("태국")) {
+        } else if (nationality.contains("태국")) {
             nativeDecreaseScript = String.format("สวัสดีครับหัวหน้า เงินเดือนเดือน %s มีส่วนต่าง %,d วอน รบกวนช่วยตรวจสอบให้หน่อยครับ", payPeriod, diff);
         } else {
             nativeDecreaseScript = String.format("안녕하세요 대표님, %s 급여 입금액과 명세서에 %,d원 차이가 있어 공제 내역 확인 부탁드립니다.", payPeriod, diff);
@@ -221,10 +256,29 @@ public class AiAgentService {
             }
             case PAYMENT_DELAY -> {
                 String korScript = String.format("안녕하세요 사장님, %s %s 급여 입금 일정이 평소와 달라 확인차 연락드렸습니다.", company, payPeriod);
+                String nativeDelayScript;
+                if ("vi".equals(lang)) {
+                    nativeDelayScript = "Xin chào giám đốc, lịch thanh toán lương tháng này có chút thay đổi nên tôi xin phép hỏi thăm ạ.";
+                } else if ("zh".equals(lang)) {
+                    nativeDelayScript = "老板您好，本月发薪日期与合同约定有所差异，想向您确认一下情况，谢谢！";
+                } else if ("en".equals(lang)) {
+                    nativeDelayScript = "Hello sir, there seems to be a difference between the contractual payday and actual payment date. Could you please check this?";
+                } else if ("th".equals(lang)) {
+                    nativeDelayScript = "สวัสดีครับหัวหน้า กำหนดการจ่ายเงินเดือนมีความล่าช้า จึงขอสอบถามครับ";
+                } else if (nationality.contains("베트남")) {
+                    nativeDelayScript = "Xin chào giám đốc, lịch thanh toán lương tháng này có chút thay đổi nên tôi xin phép hỏi thăm ạ.";
+                } else if (nationality.contains("중국")) {
+                    nativeDelayScript = "老板您好，本月发薪日期与合同约定有所差异，想向您确认一下情况，谢谢！";
+                } else if (nationality.contains("태국")) {
+                    nativeDelayScript = "สวัสดีครับหัวหน้า กำหนดการจ่ายเงินเดือนมีความล่าช้า จึงขอสอบถามครับ";
+                } else {
+                    nativeDelayScript = "안녕하세요 대표님, 급여 입금 일정이 지연되어 확인차 문의드립니다.";
+                }
+
                 EmployerQuestionCard card = EmployerQuestionCard.builder()
                         .title(String.format("%s 급여 입금일 지연 문의", payPeriod))
                         .koreanScript(korScript)
-                        .nativeScript("Xin chào giám đốc, lịch thanh toán lương tháng này có chút thay đổi nên tôi xin phép hỏi thăm ạ.")
+                        .nativeScript(nativeDelayScript)
                         .build();
 
                 return AgentPaycheckResponse.builder()
@@ -238,10 +292,29 @@ public class AiAgentService {
             }
             case NOT_RECEIVED -> {
                 String korScript = String.format("안녕하세요 사장님, %s %s 급여 입금 내역이 확인되지 않아 확인 부탁드립니다.", company, payPeriod);
+                String nativeNotReceivedScript;
+                if ("vi".equals(lang)) {
+                    nativeNotReceivedScript = "Xin chào giám đốc, hiện tại tôi chưa thấy tiền lương tháng này vào tài khoản, nhờ giám đốc kiểm tra giúp ạ.";
+                } else if ("zh".equals(lang)) {
+                    nativeNotReceivedScript = "老板您好，目前未查到本月工资入账记录，麻烦您确认一下，谢谢！";
+                } else if ("en".equals(lang)) {
+                    nativeNotReceivedScript = "Hello sir, I have not seen my salary deposit for this month yet. Could you please check the status?";
+                } else if ("th".equals(lang)) {
+                    nativeNotReceivedScript = "สวัสดีครับหัวหน้า ยังไม่พบยอดเงินเดือนเข้าบัญชี จึงขอสอบถามครับ";
+                } else if (nationality.contains("베트남")) {
+                    nativeNotReceivedScript = "Xin chào giám đốc, hiện tại tôi chưa thấy tiền lương tháng này vào tài khoản, nhờ giám đốc kiểm tra giúp ạ.";
+                } else if (nationality.contains("중국")) {
+                    nativeNotReceivedScript = "老板您好，目前未查到本月工资入账记录，麻烦您确认一下，谢谢！";
+                } else if (nationality.contains("태국")) {
+                    nativeNotReceivedScript = "สวัสดีครับหัวหน้า ยังไม่พบยอดเงินเดือนเข้าบัญชี จึงขอสอบถามครับ";
+                } else {
+                    nativeNotReceivedScript = "안녕하세요 대표님, 이번 달 급여 입금 내역이 확인되지 않아 확인 부탁드립니다.";
+                }
+
                 EmployerQuestionCard card = EmployerQuestionCard.builder()
                         .title(String.format("%s 급여 미입금 확인 요청", payPeriod))
                         .koreanScript(korScript)
-                        .nativeScript("Xin chào giám đốc, hiện tại tôi chưa thấy tiền lương tháng này vào tài khoản, nhờ giám đốc kiểm tra giúp ạ.")
+                        .nativeScript(nativeNotReceivedScript)
                         .build();
 
                 return AgentPaycheckResponse.builder()

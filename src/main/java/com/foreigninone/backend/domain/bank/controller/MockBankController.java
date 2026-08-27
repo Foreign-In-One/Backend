@@ -18,12 +18,13 @@ public class MockBankController {
 
     @GetMapping("/transactions")
     public ResponseEntity<MockBankTransactionResponse> getTransactions(
-            @RequestHeader(value = "X-Demo-User-Id", required = false, defaultValue = "1") Long headerUserId,
+            @RequestHeader(value = "X-User-Id", required = false) Long xUserId,
+            @RequestHeader(value = "X-Demo-User-Id", required = false) Long headerUserId,
             @RequestParam(value = "userId", required = false) Long paramUserId,
             @RequestParam(value = "from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(value = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
     ) {
-        Long userId = paramUserId != null ? paramUserId : headerUserId;
+        Long userId = paramUserId != null ? paramUserId : (xUserId != null ? xUserId : (headerUserId != null ? headerUserId : 1L));
         MockBankTransactionResponse response = mockBankService.getMockTransactions(userId, from, to);
         return ResponseEntity.ok(response);
     }

@@ -163,18 +163,27 @@ public class PaycheckService {
 
         Paycheck saved = paycheckRepository.save(paycheck);
 
-        // 7. CalendarEvent 동기화 (직접 호출)
+        // 7. CalendarEvent 동기화 (직접 호출: PAYCHECK 및 PAYDAY)
         calendarEventService.syncPaycheckEvent(saved);
+        calendarEventService.syncPaydayEventsForUser(user);
 
         return PaycheckResponse.from(saved);
     }
 
     @Transactional(readOnly = true)
     public PaycheckExplainResponse explainPaycheck(Long paycheckId) {
+        return explainPaycheck(paycheckId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PaycheckExplainResponse explainPaycheck(Long paycheckId, com.foreigninone.backend.domain.paycheck.dto.PaycheckExplainRequest request) {
         Paycheck paycheck = paycheckRepository.findById(paycheckId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYCHECK_NOT_FOUND));
 
-        AgentPaycheckResponse agentResponse = aiAgentService.analyzePaycheckCase(paycheckId, null);
+        String locale = request != null ? request.getLocale() : null;
+        String workplace = request != null ? request.getWorkplace() : null;
+
+        AgentPaycheckResponse agentResponse = aiAgentService.analyzePaycheckCase(paycheckId, null, locale, workplace);
 
         return PaycheckExplainResponse.builder()
                 .summary(agentResponse.getSummary())

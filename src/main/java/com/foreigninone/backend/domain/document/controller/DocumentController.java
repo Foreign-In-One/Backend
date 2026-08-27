@@ -22,12 +22,13 @@ public class DocumentController {
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<DocumentUploadResponse>> uploadDocument(
-            @RequestHeader(value = "X-Demo-User-Id", required = false, defaultValue = "1") Long headerUserId,
+            @RequestHeader(value = "X-User-Id", required = false) Long xUserId,
+            @RequestHeader(value = "X-Demo-User-Id", required = false) Long headerUserId,
             @RequestParam(value = "userId", required = false) Long paramUserId,
             @RequestParam(value = "file", required = false) MultipartFile file,
             @RequestParam(value = "documentType", required = false, defaultValue = "PAYSLIP") DocumentType documentType
     ) {
-        Long userId = paramUserId != null ? paramUserId : headerUserId;
+        Long userId = paramUserId != null ? paramUserId : (xUserId != null ? xUserId : (headerUserId != null ? headerUserId : 1L));
         DocumentUploadResponse response = documentService.uploadDocument(userId, file, documentType);
         return ResponseEntity.ok(ApiResponse.ok(response, "문서가 성공적으로 업로드되었습니다."));
     }

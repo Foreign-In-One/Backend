@@ -18,21 +18,23 @@ public class ProfileController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<ProfileResponse>> getProfile(
-            @RequestHeader(value = "X-Demo-User-Id", required = false, defaultValue = "1") Long headerUserId,
+            @RequestHeader(value = "X-User-Id", required = false) Long xUserId,
+            @RequestHeader(value = "X-Demo-User-Id", required = false) Long headerUserId,
             @RequestParam(value = "userId", required = false) Long paramUserId
     ) {
-        Long userId = paramUserId != null ? paramUserId : headerUserId;
+        Long userId = paramUserId != null ? paramUserId : (xUserId != null ? xUserId : (headerUserId != null ? headerUserId : 1L));
         ProfileResponse response = profileService.getProfile(userId);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
     @PatchMapping
     public ResponseEntity<ApiResponse<ProfileResponse>> updateProfile(
-            @RequestHeader(value = "X-Demo-User-Id", required = false, defaultValue = "1") Long headerUserId,
+            @RequestHeader(value = "X-User-Id", required = false) Long xUserId,
+            @RequestHeader(value = "X-Demo-User-Id", required = false) Long headerUserId,
             @RequestParam(value = "userId", required = false) Long paramUserId,
             @Valid @RequestBody ProfileUpdateRequest request
     ) {
-        Long userId = paramUserId != null ? paramUserId : headerUserId;
+        Long userId = paramUserId != null ? paramUserId : (xUserId != null ? xUserId : (headerUserId != null ? headerUserId : 1L));
         ProfileResponse response = profileService.updateProfile(userId, request);
         return ResponseEntity.ok(ApiResponse.ok(response, "프로필이 성공적으로 수정되었습니다."));
     }

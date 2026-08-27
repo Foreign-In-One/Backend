@@ -24,10 +24,11 @@ public class BatchController {
 
     @PostMapping("/salary-monitoring")
     public ResponseEntity<ApiResponse<SalaryMonitoringBatchResponse>> triggerSalaryMonitoring(
+            @RequestHeader(value = "X-User-Id", required = false) Long xUserId,
             @RequestHeader(value = "X-Demo-User-Id", required = false) Long headerUserId,
             @RequestParam(value = "userId", required = false) Long paramUserId
     ) {
-        Long targetUserId = paramUserId != null ? paramUserId : headerUserId;
+        Long targetUserId = paramUserId != null ? paramUserId : (xUserId != null ? xUserId : headerUserId);
         SalaryMonitoringBatchResponse response = (targetUserId != null)
                 ? salaryMonitoringJob.executeSalaryMonitoringForUser(targetUserId)
                 : salaryMonitoringJob.executeSalaryMonitoring();

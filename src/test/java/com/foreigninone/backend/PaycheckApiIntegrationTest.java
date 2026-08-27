@@ -92,21 +92,90 @@ class PaycheckApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("PayCheck 분석 실행 (POST /api/paychecks/analyze)")
+    @DisplayName("PayCheck 분석 실행 및 paycheckId 및 CalendarEvent 투영 검증 (POST /api/paychecks/analyze)")
     void testAnalyzePaycheck() throws Exception {
         PaycheckAnalyzeRequest request = PaycheckAnalyzeRequest.builder()
                 .payPeriod("2026-08")
                 .build();
 
         mockMvc.perform(post("/api/paychecks/analyze")
-                        .header("X-Demo-User-Id", 1)
+                        .header("X-User-Id", 1)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.paycheckId").isNumber())
                 .andExpect(jsonPath("$.data.payPeriod").value("2026-08"))
                 .andExpect(jsonPath("$.data.status").value("EXPLANATION_REQUIRED"))
                 .andExpect(jsonPath("$.data.differenceAmount").value(-120000));
+
+        // 캘린더 이벤트에 PAYCHECK 및 PAYDAY가 투영되었는지 확인
+        mockMvc.perform(get("/api/calendar/events")
+                        .header("X-User-Id", 1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data[?(@.eventType == 'PAYCHECK')]").isNotEmpty())
+                .andExpect(jsonPath("$.data[?(@.eventType == 'PAYDAY')]").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("PayCheck AI 설명 API - URL Path & Body & Header & 다국어 질문카드 (POST /api/paychecks/{paycheckId}/explain)")
+    void testExplainPaycheckWithBodyAndLocale() throws Exception {
+        // 1. 먼저 8월 급여 분석 실행하여 실제 paycheckId 확보
+        PaycheckAnalyzeRequest request = PaycheckAnalyzeRequest.builder()
+                .payPeriod("2026-08")
+                .build();
+
+        String analyzeResponse = mockMvc.perform(post("/api/paychecks/analyze")
+                        .header("X-User-Id", 1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        com.fasterxml.jackson.databind.JsonNode rootNode = objectMapper.readTree(analyzeResponse);
+        long paycheckId = rootNode.path("data").path("paycheckId").asLong();
+
+        // 2. 베트남어 (vi) locale로 explain 요청
+        String explainBodyVi = """
+                {
+                    "finding": { "id": "net", "difference": -120000 },
+                    "period": "2026-08",
+                    "workplace": "한국정밀",
+                    "locale": "vi"
+                }
+                """;
+
+        mockMvc.perform(post("/api/paychecks/" + paycheckId + "/explain")
+                        .header("X-User-Id", 1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(explainBodyVi))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.summary").isNotEmpty())
+                .andExpect(jsonPath("$.data.reasons").isArray())
+                .andExpect(jsonPath("$.data.nextActions").isArray())
+                .andExpect(jsonPath("$.data.employerQuestionCards").isArray())
+                .andExpect(jsonPath("$.data.employerQuestionCards[0].koreanScript").isNotEmpty())
+                .andExpect(jsonPath("$.data.employerQuestionCards[0].nativeScript").value(org.hamcrest.Matchers.containsString("Xin chào")));
+
+        // 3. 중국어 (zh) locale로 explain 요청
+        String explainBodyZh = """
+                {
+                    "finding": { "id": "net", "difference": -120000 },
+                    "period": "2026-08",
+                    "workplace": "한국정밀",
+                    "locale": "zh"
+                }
+                """;
+
+        mockMvc.perform(post("/api/paychecks/" + paycheckId + "/explain")
+                        .header("X-Demo-User-Id", 1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(explainBodyZh))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.employerQuestionCards[0].nativeScript").value(org.hamcrest.Matchers.containsString("老板您好")));
     }
 
     @Test
@@ -114,7 +183,7 @@ class PaycheckApiIntegrationTest {
     void testAgentPaycheck() throws Exception {
         mockMvc.perform(post("/api/agent/paycheck")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"paycheckId\": 2, \"caseType\": \"SALARY_DECREASE\"}"))
+                        .content("{\"paycheckId\": 1, \"caseType\": \"SALARY_DECREASE\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.caseType").value("SALARY_DECREASE"))
@@ -148,14 +217,21 @@ class PaycheckApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("급여 모니터링 배치 수동 실행 (POST /api/batch/salary-monitoring)")
+    @DisplayName("급여 모니터링 배치 수동 실행 및 캘린더 동기화 검증 (POST /api/batch/salary-monitoring)")
     void testBatchMonitoring() throws Exception {
-        mockMvc.perform(post("/api/batch/salary-monitoring")
-                        .header("X-Demo-User-Id", 1))
+        mockMvc.perform(post("/api/batch/salary-monitoring?userId=1")
+                        .header("X-User-Id", 1))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.processedCount").isNumber())
-                .andExpect(jsonPath("$.data.paychecks").isArray());
+                .andExpect(jsonPath("$.data.paychecks").isArray())
+                .andExpect(jsonPath("$.data.paychecks[0].paycheckId").isNumber());
+
+        // 배치 후 캘린더 이벤트 갱신 확인
+        mockMvc.perform(get("/api/calendar/events")
+                        .header("X-User-Id", 1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.eventType == 'PAYCHECK')]").isNotEmpty());
     }
 
     @Test

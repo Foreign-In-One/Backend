@@ -143,7 +143,7 @@ public class CalendarEventService {
         }
 
         LocalDate now = LocalDate.now();
-        for (int i = 0; i <= 6; i++) {
+        for (int i = -2; i <= 6; i++) {
             LocalDate targetMonth = now.plusMonths(i);
             int day = Math.min(user.getPayday(), targetMonth.lengthOfMonth());
             LocalDate paydayDate = LocalDate.of(targetMonth.getYear(), targetMonth.getMonth(), day);
@@ -177,7 +177,7 @@ public class CalendarEventService {
                 calendarEventRepository.save(event);
             }
         }
-        log.info("Synced future Payday events for user: {}", user.getUserId());
+        log.info("Synced Payday events for user: {}", user.getUserId());
     }
 
     @Transactional
