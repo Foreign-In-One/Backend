@@ -11,4 +11,5 @@ import java.util.List;
 public interface DocumentRepository extends JpaRepository<Document, Long> {
     List<Document> findByUser_UserId(Long userId);
     List<Document> findByUser_UserIdAndDocumentType(Long userId, DocumentType documentType);
+    List<Document> findByUser_UserIdAndDocumentTypeOrderByUploadedAtDesc(Long userId, DocumentType documentType);
 }

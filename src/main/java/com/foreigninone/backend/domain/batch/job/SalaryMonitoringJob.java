@@ -67,12 +67,16 @@ public class SalaryMonitoringJob {
                     .findByUser_UserIdAndBankTranDateBetweenOrderByBankTranDateDescTranTimeDesc(
                             user.getUserId(), searchStart, searchEnd);
 
+            java.util.Set<String> processedPeriods = new java.util.HashSet<>();
             for (BankTransaction tx : transactions) {
                 if ("급여".equals(tx.getTranType()) ||
                         "SALARY".equals(tx.getTransactionCategory()) ||
                         (tx.getPrintedContent() != null && tx.getPrintedContent().contains("급여"))) {
 
                     String payPeriod = tx.getBankTranDate().format(DateTimeFormatter.ofPattern("yyyy-MM"));
+                    if (!processedPeriods.add(payPeriod)) {
+                        continue;
+                    }
 
                     try {
                         boolean isNew = paycheckRepository.findByUser_UserIdAndPayPeriod(user.getUserId(), payPeriod).isEmpty();

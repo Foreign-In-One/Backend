@@ -33,10 +33,25 @@ public class CalendarEventService {
 
     @Transactional(readOnly = true)
     public List<CalendarEventResponse> getEvents(Long userId, LocalDateTime from, LocalDateTime to) {
-        LocalDateTime start = from != null ? from : LocalDateTime.now().minusMonths(6);
-        LocalDateTime end = to != null ? to : LocalDateTime.now().plusMonths(6);
-
-        return calendarEventRepository.findByUser_UserIdAndStartAtBetweenOrderByStartAtAsc(userId, start, end)
+        if (from != null && to != null) {
+            return calendarEventRepository.findByUser_UserIdAndStartAtBetweenOrderByStartAtAsc(userId, from, to)
+                    .stream()
+                    .map(CalendarEventResponse::from)
+                    .toList();
+        } else if (from != null) {
+            return calendarEventRepository.findByUser_UserIdAndStartAtBetweenOrderByStartAtAsc(
+                    userId, from, LocalDateTime.of(2099, 12, 31, 23, 59, 59))
+                    .stream()
+                    .map(CalendarEventResponse::from)
+                    .toList();
+        } else if (to != null) {
+            return calendarEventRepository.findByUser_UserIdAndStartAtBetweenOrderByStartAtAsc(
+                    userId, LocalDateTime.of(2000, 1, 1, 0, 0, 0), to)
+                    .stream()
+                    .map(CalendarEventResponse::from)
+                    .toList();
+        }
+        return calendarEventRepository.findByUser_UserIdOrderByStartAtAsc(userId)
                 .stream()
                 .map(CalendarEventResponse::from)
                 .toList();
@@ -49,7 +64,7 @@ public class CalendarEventService {
 
         CalendarEvent event = CalendarEvent.builder()
                 .user(user)
-                .eventType(request.getEventType() != null ? request.getEventType() : EventType.PERSONAL)
+                .eventType(EventType.PERSONAL)
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .startAt(request.getStartAt())

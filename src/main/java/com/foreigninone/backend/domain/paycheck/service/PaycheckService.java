@@ -62,10 +62,18 @@ public class PaycheckService {
     }
 
     @Transactional(readOnly = true)
-    public PaycheckResponse getPaycheck(Long paycheckId) {
-        Paycheck paycheck = paycheckRepository.findById(paycheckId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.PAYCHECK_NOT_FOUND));
+    public PaycheckResponse getPaycheck(Long paycheckId, Long userId) {
+        Paycheck paycheck = (userId != null)
+                ? paycheckRepository.findByPaycheckIdAndUser_UserId(paycheckId, userId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.PAYCHECK_NOT_FOUND))
+                : paycheckRepository.findById(paycheckId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.PAYCHECK_NOT_FOUND));
         return PaycheckResponse.from(paycheck);
+    }
+
+    @Transactional(readOnly = true)
+    public PaycheckResponse getPaycheck(Long paycheckId) {
+        return getPaycheck(paycheckId, null);
     }
 
     @Transactional
@@ -99,7 +107,7 @@ public class PaycheckService {
         // 3. 금액 및 일자 산출 (수기 입력값 우선 적용)
         BigDecimal contractAmount = request.getContractAmount() != null
                 ? request.getContractAmount()
-                : extractAmountFromDoc(contractDoc, "baseSalary", BigDecimal.valueOf(2300000));
+                : extractAmountFromDoc(contractDoc, "baseSalary", null);
 
         BigDecimal payslipAmount = request.getPayslipAmount() != null
                 ? request.getPayslipAmount()
@@ -189,14 +197,22 @@ public class PaycheckService {
     }
 
     @Transactional(readOnly = true)
-    public PaycheckExplainResponse explainPaycheck(Long paycheckId) {
-        return explainPaycheck(paycheckId, null);
+    public PaycheckExplainResponse explainPaycheck(Long paycheckId, Long userId) {
+        return explainPaycheck(paycheckId, userId, null);
     }
 
     @Transactional(readOnly = true)
-    public PaycheckExplainResponse explainPaycheck(Long paycheckId, com.foreigninone.backend.domain.paycheck.dto.PaycheckExplainRequest request) {
-        Paycheck paycheck = paycheckRepository.findById(paycheckId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.PAYCHECK_NOT_FOUND));
+    public PaycheckExplainResponse explainPaycheck(Long paycheckId) {
+        return explainPaycheck(paycheckId, (Long) null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PaycheckExplainResponse explainPaycheck(Long paycheckId, Long userId, com.foreigninone.backend.domain.paycheck.dto.PaycheckExplainRequest request) {
+        Paycheck paycheck = (userId != null)
+                ? paycheckRepository.findByPaycheckIdAndUser_UserId(paycheckId, userId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.PAYCHECK_NOT_FOUND))
+                : paycheckRepository.findById(paycheckId)
+                        .orElseThrow(() -> new BusinessException(ErrorCode.PAYCHECK_NOT_FOUND));
 
         String locale = request != null ? request.getLocale() : null;
         String workplace = request != null ? request.getWorkplace() : null;
@@ -214,19 +230,19 @@ public class PaycheckService {
     }
 
     private Document findLatestUserDocument(Long userId, DocumentType type) {
-        List<Document> docs = documentRepository.findByUser_UserIdAndDocumentType(userId, type);
-        return docs.isEmpty() ? null : docs.get(docs.size() - 1);
+        List<Document> docs = documentRepository.findByUser_UserIdAndDocumentTypeOrderByUploadedAtDesc(userId, type);
+        return docs.isEmpty() ? null : docs.get(0);
     }
 
     private Document findDocumentByPeriod(Long userId, DocumentType type, String payPeriod) {
-        List<Document> docs = documentRepository.findByUser_UserIdAndDocumentType(userId, type);
+        List<Document> docs = documentRepository.findByUser_UserIdAndDocumentTypeOrderByUploadedAtDesc(userId, type);
         for (Document doc : docs) {
             Map<String, Object> data = doc.getExtractedData();
             if (data != null && payPeriod.equals(data.get("payPeriod"))) {
                 return doc;
             }
         }
-        return docs.isEmpty() ? null : docs.get(docs.size() - 1);
+        return null;
     }
 
     private BankTransaction findSalaryTransactionForPeriod(Long userId, String payPeriod) {
@@ -242,7 +258,7 @@ public class PaycheckService {
                         "SALARY".equals(tx.getTransactionCategory()) ||
                         (tx.getPrintedContent() != null && tx.getPrintedContent().contains("급여")))
                 .findFirst()
-                .orElse(list.isEmpty() ? null : list.get(0));
+                .orElse(null);
     }
 
     private BigDecimal extractAmountFromDoc(Document doc, String key, BigDecimal defaultVal) {

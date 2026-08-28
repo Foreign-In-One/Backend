@@ -75,6 +75,13 @@ public class AiAgentService {
     }
 
     private PaycheckCaseType determineCaseType(Paycheck paycheck) {
+        if (paycheck.getStatus() == com.foreigninone.backend.domain.paycheck.entity.PaycheckStatus.NOT_RECEIVED) {
+            return PaycheckCaseType.NOT_RECEIVED;
+        }
+        if (paycheck.getExpectedPaymentDate() != null && paycheck.getPaymentDate() != null
+                && paycheck.getPaymentDate().toLocalDate().isAfter(paycheck.getExpectedPaymentDate())) {
+            return PaycheckCaseType.PAYMENT_DELAY;
+        }
         if (paycheck.getDifferenceAmount() != null && paycheck.getDifferenceAmount().compareTo(BigDecimal.ZERO) < 0) {
             return PaycheckCaseType.SALARY_DECREASE;
         }
@@ -339,6 +346,26 @@ public class AiAgentService {
                         .summary(String.format("%s 급여일에 입금 내역이 확인되지 않았습니다.", payPeriod))
                         .requiredEvidence(List.of("표준근로계약서", "급여 통장 입출금 내역"))
                         .nextActions(List.of("통장 계좌번호 재확인", "사업장 급여 지급 일정 확인"))
+                        .messageForEmployer(korScript)
+                        .employerQuestionCards(List.of(card))
+                        .build();
+            }
+            case LARGE_DEVIATION -> {
+                String korScript = String.format("안녕하세요 사장님, %s %s 급여 입금액(%,d원)에 변동 내역이 있어 확인 부탁드립니다.",
+                        company, payPeriod, paycheck.getActualAmount() != null ? paycheck.getActualAmount().longValue() : 0L);
+
+                EmployerQuestionCard card = EmployerQuestionCard.builder()
+                        .language(lang)
+                        .title(String.format("%s 급여 변동 확인 요청", payPeriod))
+                        .koreanScript(korScript)
+                        .nativeScript(korScript)
+                        .build();
+
+                return AgentPaycheckResponse.builder()
+                        .caseType(caseType.name())
+                        .summary(String.format("%s 급여 입금액에 예상과 다른 변동이 확인되었습니다.", payPeriod))
+                        .requiredEvidence(List.of(String.format("%s 임금명세서", payPeriod), "급여 입금 통장 거래내역"))
+                        .nextActions(List.of("임금명세서 상세 항목 확인", "사업주 사실 확인 문의"))
                         .messageForEmployer(korScript)
                         .employerQuestionCards(List.of(card))
                         .build();

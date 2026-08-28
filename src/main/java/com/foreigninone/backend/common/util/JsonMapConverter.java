@@ -25,7 +25,7 @@ public class JsonMapConverter implements AttributeConverter<Map<String, Object>,
             return objectMapper.writeValueAsString(attribute);
         } catch (JsonProcessingException e) {
             log.error("Failed to convert Map to JSON string", e);
-            return null;
+            throw new IllegalArgumentException("Failed to serialize Map to JSON string", e);
         }
     }
 
@@ -47,7 +47,7 @@ public class JsonMapConverter implements AttributeConverter<Map<String, Object>,
             }
             return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
-            log.error("Failed to convert JSON string to Map: raw={}", dbData, e);
+            log.error("Failed to convert JSON string to Map (length: {})", dbData.length(), e);
             return Collections.emptyMap();
         }
     }

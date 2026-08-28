@@ -6,11 +6,11 @@ import lombok.Getter;
 
 @Getter
 @Builder
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ApiResponse<T> {
     private final boolean success;
     private final T data;
     private final String message;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private final String code;
 
     public static <T> ApiResponse<T> ok(T data) {
