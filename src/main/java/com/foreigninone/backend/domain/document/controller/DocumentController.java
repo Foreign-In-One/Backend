@@ -13,6 +13,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/documents")
 @RequiredArgsConstructor
@@ -44,9 +46,10 @@ public class DocumentController {
     @PatchMapping("/{documentId}/extracted-data")
     public ResponseEntity<ApiResponse<DocumentOcrResponse>> updateExtractedData(
             @PathVariable("documentId") Long documentId,
-            @Valid @RequestBody ExtractedDataUpdateRequest request
+            @RequestBody(required = false) ExtractedDataUpdateRequest request
     ) {
-        DocumentOcrResponse response = documentService.updateExtractedData(documentId, request.getExtractedData());
+        Map<String, Object> data = request != null ? request.getEffectiveExtractedData() : Map.of();
+        DocumentOcrResponse response = documentService.updateExtractedData(documentId, data);
         return ResponseEntity.ok(ApiResponse.ok(response, "추출 데이터가 성공적으로 수정되었습니다."));
     }
 }

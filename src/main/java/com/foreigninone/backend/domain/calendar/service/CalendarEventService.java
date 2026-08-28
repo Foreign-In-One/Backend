@@ -39,19 +39,19 @@ public class CalendarEventService {
                     .map(CalendarEventResponse::from)
                     .toList();
         } else if (from != null) {
-            return calendarEventRepository.findByUser_UserIdAndStartAtBetweenOrderByStartAtAsc(
-                    userId, from, LocalDateTime.of(2099, 12, 31, 23, 59, 59))
+            return calendarEventRepository.findByUser_UserIdAndStartAtGreaterThanEqualOrderByStartAtAsc(userId, from)
                     .stream()
                     .map(CalendarEventResponse::from)
                     .toList();
         } else if (to != null) {
-            return calendarEventRepository.findByUser_UserIdAndStartAtBetweenOrderByStartAtAsc(
-                    userId, LocalDateTime.of(2000, 1, 1, 0, 0, 0), to)
+            return calendarEventRepository.findByUser_UserIdAndStartAtLessThanEqualOrderByStartAtAsc(userId, to)
                     .stream()
                     .map(CalendarEventResponse::from)
                     .toList();
         }
-        return calendarEventRepository.findByUser_UserIdOrderByStartAtAsc(userId)
+        LocalDateTime defaultStart = LocalDateTime.now().minusMonths(6);
+        LocalDateTime defaultEnd = LocalDateTime.now().plusMonths(12);
+        return calendarEventRepository.findByUser_UserIdAndStartAtBetweenOrderByStartAtAsc(userId, defaultStart, defaultEnd)
                 .stream()
                 .map(CalendarEventResponse::from)
                 .toList();

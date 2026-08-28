@@ -351,14 +351,41 @@ public class AiAgentService {
                         .build();
             }
             case LARGE_DEVIATION -> {
+                long actualAmt = paycheck.getActualAmount() != null ? paycheck.getActualAmount().longValue() : 0L;
                 String korScript = String.format("안녕하세요 사장님, %s %s 급여 입금액(%,d원)에 변동 내역이 있어 확인 부탁드립니다.",
-                        company, payPeriod, paycheck.getActualAmount() != null ? paycheck.getActualAmount().longValue() : 0L);
+                        company, payPeriod, actualAmt);
+
+                String nativeLargeDevScript;
+                if ("vi".equals(lang)) {
+                    nativeLargeDevScript = String.format("Xin chào giám đốc, tiền lương tháng %s vào tài khoản (%,d won) có sự thay đổi, nhờ giám đốc kiểm tra giúp tôi ạ.",
+                            payPeriod, actualAmt);
+                } else if ("zh".equals(lang)) {
+                    nativeLargeDevScript = String.format("老板您好，%s月份工资实发金额（%,d韩元）存在变动，想向您确认一下具体明细，谢谢！",
+                            payPeriod, actualAmt);
+                } else if ("en".equals(lang)) {
+                    nativeLargeDevScript = String.format("Hello sir, there is a variation in my %s salary deposit (%,d KRW). Could you please verify the details?",
+                            payPeriod, actualAmt);
+                } else if ("th".equals(lang)) {
+                    nativeLargeDevScript = String.format("สวัสดีครับหัวหน้า ยอดเงินเดือนเดือน %s (%,d วอน) มีความเปลี่ยนแปลง จึงขอสอบถามรายละเอียดครับ",
+                            payPeriod, actualAmt);
+                } else if (nationality.contains("베트남")) {
+                    nativeLargeDevScript = String.format("Xin chào giám đốc, tiền lương tháng %s vào tài khoản (%,d won) có sự thay đổi, nhờ giám đốc kiểm tra giúp tôi ạ.",
+                            payPeriod, actualAmt);
+                } else if (nationality.contains("중국")) {
+                    nativeLargeDevScript = String.format("老板您好，%s月份工资实发金额（%,d韩元）存在变动，想向您确认一下具体明细，谢谢！",
+                            payPeriod, actualAmt);
+                } else if (nationality.contains("태국")) {
+                    nativeLargeDevScript = String.format("สวัสดีครับหัวหน้า ยอดเงินเดือนเดือน %s (%,d วอน) มีความเปลี่ยนแปลง จึงขอสอบถามรายละเอียดครับ",
+                            payPeriod, actualAmt);
+                } else {
+                    nativeLargeDevScript = korScript;
+                }
 
                 EmployerQuestionCard card = EmployerQuestionCard.builder()
                         .language(lang)
                         .title(String.format("%s 급여 변동 확인 요청", payPeriod))
                         .koreanScript(korScript)
-                        .nativeScript(korScript)
+                        .nativeScript(nativeLargeDevScript)
                         .build();
 
                 return AgentPaycheckResponse.builder()

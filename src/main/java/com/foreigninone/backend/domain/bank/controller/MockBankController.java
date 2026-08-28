@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 
 @RestController
-@RequestMapping("/api/mock/bank")
+@RequestMapping({"/api/mock/bank", "/api/bank"})
 @RequiredArgsConstructor
 public class MockBankController {
 

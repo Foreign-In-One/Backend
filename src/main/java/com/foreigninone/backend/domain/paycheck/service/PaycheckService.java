@@ -230,12 +230,12 @@ public class PaycheckService {
     }
 
     private Document findLatestUserDocument(Long userId, DocumentType type) {
-        List<Document> docs = documentRepository.findByUser_UserIdAndDocumentTypeOrderByUploadedAtDesc(userId, type);
+        List<Document> docs = documentRepository.findByUser_UserIdAndDocumentTypeOrderByUploadedAtDescDocumentIdDesc(userId, type);
         return docs.isEmpty() ? null : docs.get(0);
     }
 
     private Document findDocumentByPeriod(Long userId, DocumentType type, String payPeriod) {
-        List<Document> docs = documentRepository.findByUser_UserIdAndDocumentTypeOrderByUploadedAtDesc(userId, type);
+        List<Document> docs = documentRepository.findByUser_UserIdAndDocumentTypeOrderByUploadedAtDescDocumentIdDesc(userId, type);
         for (Document doc : docs) {
             Map<String, Object> data = doc.getExtractedData();
             if (data != null && payPeriod.equals(data.get("payPeriod"))) {

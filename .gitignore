@@ -21,6 +21,7 @@ uploads/
 
 # IDE
 .idea/
+.idea/workspace.xml
 *.iml
 .vscode/
 !.vscode/extensions.json

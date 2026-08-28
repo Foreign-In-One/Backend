@@ -1,11 +1,12 @@
 package com.foreigninone.backend.domain.document.dto;
 
-import jakarta.validation.constraints.NotNull;
+import com.fasterxml.jackson.annotation.JsonAnySetter;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @Getter
@@ -13,6 +14,18 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ExtractedDataUpdateRequest {
-    @NotNull(message = "추출 데이터는 필수입니다.")
     private Map<String, Object> extractedData;
+
+    @JsonAnySetter
+    private Map<String, Object> additionalProperties = new HashMap<>();
+
+    public Map<String, Object> getEffectiveExtractedData() {
+        if (extractedData != null && !extractedData.isEmpty()) {
+            return extractedData;
+        }
+        if (additionalProperties != null && !additionalProperties.isEmpty()) {
+            return additionalProperties;
+        }
+        return Map.of();
+    }
 }

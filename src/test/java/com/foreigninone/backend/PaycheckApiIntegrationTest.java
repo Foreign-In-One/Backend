@@ -72,9 +72,17 @@ class PaycheckApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("Mock Bank 거래내역 조회 (GET /api/mock/bank/transactions)")
+    @DisplayName("Mock Bank 거래내역 조회 (GET /api/mock/bank/transactions 및 GET /api/bank/transactions)")
     void testGetMockBankTransactions() throws Exception {
-        mockMvc.perform(get("/api/mock/bank/transactions")
+        // 1. /api/mock/bank/transactions
+        mockMvc.perform(get("/api/mock/bank/transactions?from=2026-08-01&to=2026-08-31")
+                        .header("X-Demo-User-Id", 1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rspCode").value("A0000"))
+                .andExpect(jsonPath("$.resList").isArray());
+
+        // 2. /api/bank/transactions (alias)
+        mockMvc.perform(get("/api/bank/transactions?from=2026-08-01&to=2026-08-31")
                         .header("X-Demo-User-Id", 1))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.rspCode").value("A0000"))
@@ -375,8 +383,8 @@ class PaycheckApiIntegrationTest {
 
         long documentId = objectMapper.readTree(uploadResponse).path("data").path("documentId").asLong();
 
-        // 2. OCR 추출 데이터 수기 수정 요청 (Drawer/모달에서 사용자가 수정한 데이터)
-        String updatePayload = """
+        // 2. OCR 추출 데이터 수기 수정 요청 (1: wrapped extractedData 포맷)
+        String updatePayloadWrapped = """
                 {
                     "extractedData": {
                         "payPeriod": "2026-08",
@@ -391,7 +399,7 @@ class PaycheckApiIntegrationTest {
 
         mockMvc.perform(patch("/api/documents/" + documentId + "/extracted-data")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(updatePayload))
+                        .content(updatePayloadWrapped))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.documentId").value(documentId))
@@ -399,6 +407,29 @@ class PaycheckApiIntegrationTest {
                 .andExpect(jsonPath("$.data.extractedData.baseSalary").value(2500000))
                 .andExpect(jsonPath("$.data.extractedData.netPay").value(2650000))
                 .andExpect(jsonPath("$.data.extractedData.companyName").value("한국정밀"));
+
+        // 3. OCR 추출 데이터 수기 수정 요청 (2: flat JSON 포맷 직접 전달)
+        String updatePayloadFlat = """
+                {
+                    "payPeriod": "2026-08",
+                    "baseSalary": 2700000,
+                    "overtimeAllowance": 300000,
+                    "deduction": 100000,
+                    "netPay": 2900000,
+                    "companyName": "한국정밀(수정)",
+                    "payday": 25
+                }
+                """;
+
+        mockMvc.perform(patch("/api/documents/" + documentId + "/extracted-data")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updatePayloadFlat))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.extractedData.baseSalary").value(2700000))
+                .andExpect(jsonPath("$.data.extractedData.netPay").value(2900000))
+                .andExpect(jsonPath("$.data.extractedData.companyName").value("한국정밀(수정)"))
+                .andExpect(jsonPath("$.data.extractedData.payday").value(25));
     }
 
     @Test

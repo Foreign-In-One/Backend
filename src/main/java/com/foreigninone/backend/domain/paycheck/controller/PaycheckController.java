@@ -23,10 +23,12 @@ public class PaycheckController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<PaycheckResponse>>> getPaychecks(
             @RequestHeader(value = "X-User-Id", required = false) Long xUserId,
+            @RequestHeader(value = "X-Demo-User-Id", required = false) Long headerUserId,
+            @RequestParam(value = "userId", required = false) Long paramUserId,
             @RequestParam(value = "from", required = false) String from,
             @RequestParam(value = "to", required = false) String to
     ) {
-        Long userId = xUserId != null ? xUserId : 1L;
+        Long userId = paramUserId != null ? paramUserId : (xUserId != null ? xUserId : (headerUserId != null ? headerUserId : 1L));
         List<PaycheckResponse> response = paycheckService.getPaychecks(userId, from, to);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
@@ -34,9 +36,11 @@ public class PaycheckController {
     @GetMapping("/{paycheckId}")
     public ResponseEntity<ApiResponse<PaycheckResponse>> getPaycheck(
             @PathVariable("paycheckId") Long paycheckId,
-            @RequestHeader(value = "X-User-Id", required = false) Long xUserId
+            @RequestHeader(value = "X-User-Id", required = false) Long xUserId,
+            @RequestHeader(value = "X-Demo-User-Id", required = false) Long headerUserId,
+            @RequestParam(value = "userId", required = false) Long paramUserId
     ) {
-        Long userId = xUserId != null ? xUserId : 1L;
+        Long userId = paramUserId != null ? paramUserId : (xUserId != null ? xUserId : (headerUserId != null ? headerUserId : 1L));
         PaycheckResponse response = paycheckService.getPaycheck(paycheckId, userId);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
@@ -44,9 +48,11 @@ public class PaycheckController {
     @PostMapping("/analyze")
     public ResponseEntity<ApiResponse<PaycheckResponse>> analyzePaycheck(
             @RequestHeader(value = "X-User-Id", required = false) Long xUserId,
+            @RequestHeader(value = "X-Demo-User-Id", required = false) Long headerUserId,
+            @RequestParam(value = "userId", required = false) Long paramUserId,
             @Valid @RequestBody PaycheckAnalyzeRequest request
     ) {
-        Long userId = xUserId != null ? xUserId : 1L;
+        Long userId = paramUserId != null ? paramUserId : (xUserId != null ? xUserId : (headerUserId != null ? headerUserId : 1L));
         PaycheckResponse response = paycheckService.analyzePaycheck(userId, request);
         return ResponseEntity.ok(ApiResponse.ok(response, "급여 분석이 완료되었습니다."));
     }
@@ -55,9 +61,11 @@ public class PaycheckController {
     public ResponseEntity<ApiResponse<PaycheckExplainResponse>> explainPaycheck(
             @PathVariable("paycheckId") Long paycheckId,
             @RequestHeader(value = "X-User-Id", required = false) Long xUserId,
+            @RequestHeader(value = "X-Demo-User-Id", required = false) Long headerUserId,
+            @RequestParam(value = "userId", required = false) Long paramUserId,
             @RequestBody(required = false) PaycheckExplainRequest request
     ) {
-        Long userId = xUserId != null ? xUserId : 1L;
+        Long userId = paramUserId != null ? paramUserId : (xUserId != null ? xUserId : (headerUserId != null ? headerUserId : 1L));
         PaycheckExplainResponse response = paycheckService.explainPaycheck(paycheckId, userId, request);
         return ResponseEntity.ok(ApiResponse.ok(response, "AI 설명 조회가 완료되었습니다."));
     }
