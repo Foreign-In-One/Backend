@@ -5,6 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="b201bca5-46b2-47d7-bfde-6acdc5b4b319" name="변경" comment="">
+      <change afterPath="$PROJECT_DIR$/.env.example" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/uploads_test_doc.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.gradle/9.5.1/checksums/checksums.lock" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.gradle/9.5.1/executionHistory/executionHistory.lock" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.gradle/9.5.1/fileChanges/last-build.bin" beforeDir="false" />
@@ -19,20 +21,6 @@
       <change beforePath="$PROJECT_DIR$/.gradle/9.7.0/fileHashes/fileHashes.bin" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/9.7.0/fileHashes/fileHashes.bin" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.gradle/9.7.0/fileHashes/fileHashes.lock" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/9.7.0/fileHashes/fileHashes.lock" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.gradle/buildOutputCleanup/buildOutputCleanup.lock" beforeDir="false" afterPath="$PROJECT_DIR$/.gradle/buildOutputCleanup/buildOutputCleanup.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/build.gradle" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/common/config/WebConfig.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/common/config/WebConfig.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/agent/dto/EmployerQuestionCard.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/agent/dto/EmployerQuestionCard.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/agent/service/AiAgentService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/agent/service/AiAgentService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/batch/job/SalaryMonitoringJob.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/batch/job/SalaryMonitoringJob.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/calendar/service/CalendarEventService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/calendar/service/CalendarEventService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/document/controller/DocumentController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/document/controller/DocumentController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/document/service/OcrService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/document/service/OcrService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/paycheck/dto/PaycheckAnalyzeRequest.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/paycheck/dto/PaycheckAnalyzeRequest.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/paycheck/dto/PaycheckExplainResponse.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/paycheck/dto/PaycheckExplainResponse.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/paycheck/service/PaycheckService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/paycheck/service/PaycheckService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/user/service/ProfileService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/foreigninone/backend/domain/user/service/ProfileService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/test/java/com/foreigninone/backend/PaycheckApiIntegrationTest.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/java/com/foreigninone/backend/PaycheckApiIntegrationTest.java" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
