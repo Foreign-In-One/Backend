@@ -20,7 +20,7 @@ public class DocumentController {
 
     private final DocumentService documentService;
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping
     public ResponseEntity<ApiResponse<DocumentUploadResponse>> uploadDocument(
             @RequestHeader(value = "X-User-Id", required = false) Long xUserId,
             @RequestHeader(value = "X-Demo-User-Id", required = false) Long headerUserId,

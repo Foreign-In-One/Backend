@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class EmployerQuestionCard {
+    private String language;
     private String title;
     private String koreanScript;
     private String nativeScript;

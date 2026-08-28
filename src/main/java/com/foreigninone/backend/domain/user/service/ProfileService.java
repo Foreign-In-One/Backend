@@ -44,11 +44,11 @@ public class ProfileService {
         );
 
         // Side-effects: sync CalendarEvents
-        if (request.getPayday() != null && !request.getPayday().equals(oldPayday)) {
+        if (user.getPayday() != null) {
             calendarEventService.syncPaydayEventsForUser(user);
         }
 
-        if (request.getExpectedExitDate() != null && !request.getExpectedExitDate().equals(oldExitDate)) {
+        if (user.getExpectedExitDate() != null) {
             calendarEventService.syncExitEvent(user);
         }
 

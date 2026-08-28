@@ -25,9 +25,14 @@ public class SalaryMonitoringJob {
 
     private final UserRepository userRepository;
     private final BankTransactionRepository bankTransactionRepository;
+    private final com.foreigninone.backend.domain.paycheck.repository.PaycheckRepository paycheckRepository;
     private final PaycheckService paycheckService;
 
-    @Scheduled(cron = "${paycycle.batch.cron:0 0 9 * * *}")
+    @Scheduled(cron = "${paycycle.batch.cron:0 0 9 * * ?}")
+    public void runDailySalaryMonitoring() {
+        executeSalaryMonitoring();
+    }
+
     public SalaryMonitoringBatchResponse executeSalaryMonitoring() {
         return executeSalaryMonitoringInternal(null);
     }
@@ -70,6 +75,8 @@ public class SalaryMonitoringJob {
                     String payPeriod = tx.getBankTranDate().format(DateTimeFormatter.ofPattern("yyyy-MM"));
 
                     try {
+                        boolean isNew = paycheckRepository.findByUser_UserIdAndPayPeriod(user.getUserId(), payPeriod).isEmpty();
+
                         PaycheckAnalyzeRequest request = PaycheckAnalyzeRequest.builder()
                                 .payPeriod(payPeriod)
                                 .transactionId(tx.getTransactionId())
@@ -77,7 +84,11 @@ public class SalaryMonitoringJob {
 
                         PaycheckResponse response = paycheckService.analyzePaycheck(user.getUserId(), request);
                         results.add(response);
-                        createdCount++;
+                        if (isNew) {
+                            createdCount++;
+                        } else {
+                            updatedCount++;
+                        }
                         log.info("Processed salary monitoring for user: {}, period: {}, status: {}",
                                 user.getUserId(), payPeriod, response.getStatus());
                     } catch (Exception e) {

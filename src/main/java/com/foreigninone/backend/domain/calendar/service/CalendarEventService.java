@@ -112,12 +112,27 @@ public class CalendarEventService {
 
         LocalDateTime eventEnd = eventStart.toLocalDate().atTime(23, 59, 59);
 
-        String title = String.format("%s 급여 확인 (%s)", paycheck.getPayPeriod(), paycheck.getStatus().name());
+        // title: "8월 급여 입금"
+        String title;
+        try {
+            if (paycheck.getPayPeriod() != null) {
+                java.time.YearMonth ym = java.time.YearMonth.parse(paycheck.getPayPeriod(), java.time.format.DateTimeFormatter.ofPattern("yyyy-MM"));
+                title = String.format("%d월 급여 입금", ym.getMonthValue());
+            } else if (paycheck.getPaymentDate() != null) {
+                title = String.format("%d월 급여 입금", paycheck.getPaymentDate().getMonthValue());
+            } else {
+                title = "급여 입금";
+            }
+        } catch (Exception e) {
+            title = "급여 입금";
+        }
+
         String description = paycheck.getAnalysisSummary() != null ? paycheck.getAnalysisSummary() : "급여 검증 결과";
+        String eventStatus = "COMPLETED";
 
         if (existingOpt.isPresent()) {
             CalendarEvent event = existingOpt.get();
-            event.update(title, description, eventStart, eventEnd, paycheck.getStatus().name());
+            event.update(title, description, eventStart, eventEnd, eventStatus);
             log.info("Updated CalendarEvent for Paycheck ID: {}", sourceId);
         } else {
             CalendarEvent newEvent = CalendarEvent.builder()
@@ -129,7 +144,7 @@ public class CalendarEventService {
                     .endAt(eventEnd)
                     .sourceType(SourceType.PAYCHECK)
                     .sourceId(sourceId)
-                    .status(paycheck.getStatus().name())
+                    .status(eventStatus)
                     .build();
             calendarEventRepository.save(newEvent);
             log.info("Created CalendarEvent for Paycheck ID: {}", sourceId);

@@ -14,6 +14,8 @@ import java.util.List;
 @AllArgsConstructor
 public class PaycheckExplainResponse {
 
+    private Long paycheckId;
+    private String caseType;
     private String summary;
     private List<String> reasons;
     private List<String> nextActions;

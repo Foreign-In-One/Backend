@@ -21,4 +21,15 @@ public class PaycheckAnalyzeRequest {
     private Long contractDocumentId;
     private Long payslipDocumentId;
     private Long bankReceiptDocumentId;
+
+    private java.math.BigDecimal contractAmount;
+    private java.math.BigDecimal payslipAmount;
+    private java.math.BigDecimal actualAmount;
+    private java.math.BigDecimal differenceAmount;
+
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
+    private java.time.LocalDate expectedPaymentDate;
+
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private java.time.LocalDateTime paymentDate;
 }

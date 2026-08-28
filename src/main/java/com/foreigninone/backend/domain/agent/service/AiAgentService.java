@@ -88,6 +88,8 @@ public class AiAgentService {
         String prompt = buildPrompt(paycheck, user, caseType, effectiveLocale, effectiveWorkplace);
         String nationality = (user != null && user.getNationality() != null) ? user.getNationality() : "외국인";
 
+        long diff = paycheck.getDifferenceAmount() != null ? paycheck.getDifferenceAmount().abs().longValue() : 0L;
+
         Map<String, Object> requestBody = Map.of(
                 "model", openAiProperties.getModel(),
                 "messages", List.of(
@@ -95,8 +97,8 @@ public class AiAgentService {
                                 "당신은 외국인 근로자의 금융권리를 돕는 PayCycle AI 어시스턴트입니다.\n" +
                                         "규칙:\n" +
                                         "1. '임금체불', '불법공제', '위반' 같은 단정적인 법적 용어를 절대 사용하지 마세요. 대신 '설명이 필요한 차이', '추가 확인 필요' 표현을 사용하세요.\n" +
-                                        "2. 없는 숫자를 임의로 계산하거나 추론하지 마세요.\n" +
-                                        "3. employerQuestionCards의 nativeScript는 사용자의 국적/언어(" + nationality + ", " + effectiveLocale + ")에 맞추어 해당 모국어로 번역하여 작성하세요.\n" +
+                                        "2. [환각 방지] 제시된 차액(" + String.format("%,d", diff) + "원)과 명시된 급여 금액만을 사용하며, 임의로 다른 금액이나 없는 숫자를 추론/계산하여 지어내지 마세요.\n" +
+                                        "3. [언어 분기] koreanScript는 한국인 사업주가 읽을 공손하고 격식 있는 존댓말로 작성하고, nativeScript는 사용자가 요청한 언어/국적(" + nationality + ", " + effectiveLocale + ")에 맞추어 해당 모국어로 정확히 번역하여 작성하세요.\n" +
                                         "4. 반드시 아래 JSON 형식으로만 응답하세요.\n" +
                                         "{\n" +
                                         "  \"summary\": \"...\",\n" +
@@ -105,6 +107,7 @@ public class AiAgentService {
                                         "  \"messageForEmployer\": \"...\",\n" +
                                         "  \"employerQuestionCards\": [\n" +
                                         "    {\n" +
+                                        "      \"language\": \"" + effectiveLocale + "\",\n" +
                                         "      \"title\": \"질문 카드 제목\",\n" +
                                         "      \"koreanScript\": \"한국어 사장님 문의 문구\",\n" +
                                         "      \"nativeScript\": \"사용자 모국어 번역 문구\"\n" +
@@ -118,8 +121,8 @@ public class AiAgentService {
         );
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(Duration.ofSeconds(3));
-        requestFactory.setReadTimeout(Duration.ofSeconds(5));
+        requestFactory.setConnectTimeout(Duration.ofSeconds(10));
+        requestFactory.setReadTimeout(Duration.ofSeconds(60));
 
         RestClient restClient = RestClient.builder()
                 .requestFactory(requestFactory)
@@ -127,12 +130,21 @@ public class AiAgentService {
                 .defaultHeader("Authorization", "Bearer " + openAiProperties.getApiKey())
                 .build();
 
-        String responseJson = restClient.post()
-                .uri("/chat/completions")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(requestBody)
-                .retrieve()
-                .body(String.class);
+        String responseJson;
+        try {
+            responseJson = restClient.post()
+                    .uri("/chat/completions")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(requestBody)
+                    .retrieve()
+                    .body(String.class);
+        } catch (org.springframework.web.client.RestClientResponseException ex) {
+            log.error("OpenAI API returned error status {}: {}", ex.getStatusCode(), ex.getResponseBodyAsString());
+            throw ex;
+        } catch (Exception ex) {
+            log.error("OpenAI API request failed: {}", ex.getMessage());
+            throw ex;
+        }
 
         JsonNode root = objectMapper.readTree(responseJson);
         String content = root.path("choices").get(0).path("message").path("content").asText();
@@ -156,6 +168,7 @@ public class AiAgentService {
         if (resultNode.path("employerQuestionCards").isArray()) {
             for (JsonNode node : resultNode.path("employerQuestionCards")) {
                 employerQuestionCards.add(EmployerQuestionCard.builder()
+                        .language(node.has("language") && !node.path("language").asText().isBlank() ? node.path("language").asText() : effectiveLocale)
                         .title(node.path("title").asText())
                         .koreanScript(node.path("koreanScript").asText())
                         .nativeScript(node.path("nativeScript").asText())
@@ -167,6 +180,7 @@ public class AiAgentService {
 
         if (employerQuestionCards.isEmpty() && !messageForEmployer.isBlank()) {
             employerQuestionCards.add(EmployerQuestionCard.builder()
+                    .language(effectiveLocale)
                     .title("급여 차액 확인 요청")
                     .koreanScript(messageForEmployer)
                     .nativeScript(messageForEmployer)
@@ -240,6 +254,7 @@ public class AiAgentService {
                         company, payPeriod, paycheck.getActualAmount() != null ? paycheck.getActualAmount().longValue() : 0L, diff);
 
                 EmployerQuestionCard card = EmployerQuestionCard.builder()
+                        .language(lang)
                         .title(String.format("%s 급여 차액 %,d원 확인 요청", payPeriod, diff))
                         .koreanScript(korScript)
                         .nativeScript(nativeDecreaseScript)
@@ -276,6 +291,7 @@ public class AiAgentService {
                 }
 
                 EmployerQuestionCard card = EmployerQuestionCard.builder()
+                        .language(lang)
                         .title(String.format("%s 급여 입금일 지연 문의", payPeriod))
                         .koreanScript(korScript)
                         .nativeScript(nativeDelayScript)
@@ -312,6 +328,7 @@ public class AiAgentService {
                 }
 
                 EmployerQuestionCard card = EmployerQuestionCard.builder()
+                        .language(lang)
                         .title(String.format("%s 급여 미입금 확인 요청", payPeriod))
                         .koreanScript(korScript)
                         .nativeScript(nativeNotReceivedScript)

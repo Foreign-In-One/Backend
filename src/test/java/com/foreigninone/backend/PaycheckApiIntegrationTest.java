@@ -119,6 +119,34 @@ class PaycheckApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("PayCheck 수기 입력/수정 필드를 포함한 분석 저장 검증 (POST /api/paychecks/analyze)")
+    void testAnalyzePaycheckWithManualInputs() throws Exception {
+        PaycheckAnalyzeRequest request = PaycheckAnalyzeRequest.builder()
+                .payPeriod("2026-08")
+                .contractAmount(java.math.BigDecimal.valueOf(2500000))
+                .payslipAmount(java.math.BigDecimal.valueOf(2380000))
+                .actualAmount(java.math.BigDecimal.valueOf(2260000))
+                .differenceAmount(java.math.BigDecimal.valueOf(-120000))
+                .expectedPaymentDate(LocalDate.of(2026, 8, 25))
+                .paymentDate(LocalDateTime.of(2026, 8, 25, 9, 14, 0))
+                .build();
+
+        mockMvc.perform(post("/api/paychecks/analyze")
+                        .header("X-User-Id", 1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.paycheckId").isNumber())
+                .andExpect(jsonPath("$.data.payPeriod").value("2026-08"))
+                .andExpect(jsonPath("$.data.contractAmount").value(2500000))
+                .andExpect(jsonPath("$.data.payslipAmount").value(2380000))
+                .andExpect(jsonPath("$.data.actualAmount").value(2260000))
+                .andExpect(jsonPath("$.data.differenceAmount").value(-120000))
+                .andExpect(jsonPath("$.data.status").value("EXPLANATION_REQUIRED"));
+    }
+
+    @Test
     @DisplayName("PayCheck AI 설명 API - URL Path & Body & Header & 다국어 질문카드 (POST /api/paychecks/{paycheckId}/explain)")
     void testExplainPaycheckWithBodyAndLocale() throws Exception {
         // 1. 먼저 8월 급여 분석 실행하여 실제 paycheckId 확보
@@ -252,6 +280,31 @@ class PaycheckApiIntegrationTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.documentId").isNumber())
                 .andExpect(jsonPath("$.data.documentType").value("PAYSLIP"));
+    }
+
+    @Test
+    @DisplayName("급여 모니터링 배치 멱등성 및 CalendarEvent 테이블 매핑 규격 검증")
+    void testBatchMonitoringIdempotencyAndCalendarMapping() throws Exception {
+        // 1회차 배치 실행 (생성)
+        mockMvc.perform(post("/api/batch/salary-monitoring?userId=1")
+                        .header("X-User-Id", 1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.paychecks[0].paycheckId").isNumber());
+
+        // 2회차 배치 중복 실행 (멱등성: UPSERT 및 updatedCount 증가 확인)
+        mockMvc.perform(post("/api/batch/salary-monitoring?userId=1")
+                        .header("X-User-Id", 1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.updatedCount").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
+
+        // 캘린더 이벤트 매핑 확인 (eventType=PAYCHECK, title='8월 급여 입금', status='COMPLETED', sourceType='PAYCHECK')
+        mockMvc.perform(get("/api/calendar/events")
+                        .header("X-User-Id", 1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.eventType == 'PAYCHECK' && @.title == '8월 급여 입금')].status").value("COMPLETED"))
+                .andExpect(jsonPath("$.data[?(@.eventType == 'PAYCHECK' && @.title == '8월 급여 입금')].sourceType").value("PAYCHECK"));
     }
 
     @Test

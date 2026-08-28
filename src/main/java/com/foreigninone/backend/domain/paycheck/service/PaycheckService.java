@@ -96,27 +96,42 @@ public class PaycheckService {
             transaction = findSalaryTransactionForPeriod(userId, payPeriod);
         }
 
-        // 3. 금액 및 일자 산출
-        BigDecimal contractAmount = extractAmountFromDoc(contractDoc, "baseSalary", BigDecimal.valueOf(2300000));
-        BigDecimal payslipAmount = extractAmountFromDoc(payslipDoc, "netPay", null);
-        if (payslipAmount == null) {
+        // 3. 금액 및 일자 산출 (수기 입력값 우선 적용)
+        BigDecimal contractAmount = request.getContractAmount() != null
+                ? request.getContractAmount()
+                : extractAmountFromDoc(contractDoc, "baseSalary", BigDecimal.valueOf(2300000));
+
+        BigDecimal payslipAmount = request.getPayslipAmount() != null
+                ? request.getPayslipAmount()
+                : extractAmountFromDoc(payslipDoc, "netPay", null);
+        if (payslipAmount == null && request.getPayslipAmount() == null) {
             payslipAmount = extractAmountFromDoc(payslipDoc, "baseSalary", null);
         }
 
-        BigDecimal actualAmount = null;
-        LocalDateTime actualPaymentDate = null;
+        BigDecimal actualAmount = request.getActualAmount() != null
+                ? request.getActualAmount()
+                : null;
+        LocalDateTime actualPaymentDate = request.getPaymentDate() != null
+                ? request.getPaymentDate()
+                : null;
 
-        if (transaction != null) {
+        if (actualAmount == null && transaction != null) {
             actualAmount = transaction.getTranAmt();
+        } else if (actualAmount == null && bankReceiptDoc != null) {
+            actualAmount = extractAmountFromDoc(bankReceiptDoc, "depositAmount", null);
+        }
+
+        if (actualPaymentDate == null && transaction != null) {
             actualPaymentDate = transaction.getBankTranDate().atTime(
                     transaction.getTranTime() != null ? transaction.getTranTime() : java.time.LocalTime.of(9, 0));
-        } else if (bankReceiptDoc != null) {
-            actualAmount = extractAmountFromDoc(bankReceiptDoc, "depositAmount", null);
+        } else if (actualPaymentDate == null && bankReceiptDoc != null) {
             actualPaymentDate = LocalDateTime.now();
         }
 
         // 예상 급여일 계산
-        LocalDate expectedPaymentDate = calculateExpectedPaymentDate(user, payPeriod);
+        LocalDate expectedPaymentDate = request.getExpectedPaymentDate() != null
+                ? request.getExpectedPaymentDate()
+                : calculateExpectedPaymentDate(user, payPeriod);
 
         // 4. 이전 달 급여 기록 조회 (전월 대비 비교용)
         YearMonth ym = YearMonth.parse(payPeriod, DateTimeFormatter.ofPattern("yyyy-MM"));
@@ -136,6 +151,9 @@ public class PaycheckService {
                 .build();
 
         PaycheckRuleEngine.RuleResult ruleResult = ruleEngine.evaluate(ruleInput);
+        BigDecimal differenceAmount = request.getDifferenceAmount() != null
+                ? request.getDifferenceAmount()
+                : ruleResult.getDifferenceAmount();
 
         // 6. 저장 또는 업데이트
         Paycheck paycheck = paycheckRepository.findByUser_UserIdAndPayPeriod(userId, payPeriod)
@@ -149,7 +167,7 @@ public class PaycheckService {
                 contractAmount,
                 payslipAmount,
                 actualAmount,
-                ruleResult.getDifferenceAmount(),
+                differenceAmount,
                 expectedPaymentDate,
                 actualPaymentDate,
                 ruleResult.getStatus(),
@@ -186,6 +204,8 @@ public class PaycheckService {
         AgentPaycheckResponse agentResponse = aiAgentService.analyzePaycheckCase(paycheckId, null, locale, workplace);
 
         return PaycheckExplainResponse.builder()
+                .paycheckId(paycheckId)
+                .caseType(agentResponse.getCaseType())
                 .summary(agentResponse.getSummary())
                 .reasons(agentResponse.getRequiredEvidence())
                 .nextActions(agentResponse.getNextActions())
