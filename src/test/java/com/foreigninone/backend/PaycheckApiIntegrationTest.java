@@ -430,6 +430,14 @@ class PaycheckApiIntegrationTest {
                 .andExpect(jsonPath("$.data.extractedData.netPay").value(2900000))
                 .andExpect(jsonPath("$.data.extractedData.companyName").value("한국정밀(수정)"))
                 .andExpect(jsonPath("$.data.extractedData.payday").value(25));
+
+        // 4. 빈 요청 바디 전달 시 400 INVALID_REQUEST 에러 및 기존 데이터 보존 검증
+        mockMvc.perform(patch("/api/documents/" + documentId + "/extracted-data")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     }
 
     @Test

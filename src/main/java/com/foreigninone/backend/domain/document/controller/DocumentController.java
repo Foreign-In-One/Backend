@@ -10,6 +10,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import com.foreigninone.backend.common.exception.BusinessException;
+import com.foreigninone.backend.common.exception.ErrorCode;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -48,7 +50,10 @@ public class DocumentController {
             @PathVariable("documentId") Long documentId,
             @RequestBody(required = false) ExtractedDataUpdateRequest request
     ) {
-        Map<String, Object> data = request != null ? request.getEffectiveExtractedData() : Map.of();
+        if (request == null || request.getEffectiveExtractedData().isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "수정할 추출 데이터가 유효하지 않거나 비어 있습니다.");
+        }
+        Map<String, Object> data = request.getEffectiveExtractedData();
         DocumentOcrResponse response = documentService.updateExtractedData(documentId, data);
         return ResponseEntity.ok(ApiResponse.ok(response, "추출 데이터가 성공적으로 수정되었습니다."));
     }
