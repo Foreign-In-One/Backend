@@ -14,6 +14,7 @@ import com.foreigninone.backend.domain.document.repository.DocumentRepository;
 import com.foreigninone.backend.domain.paycheck.entity.Paycheck;
 import com.foreigninone.backend.domain.paycheck.entity.PaycheckStatus;
 import com.foreigninone.backend.domain.paycheck.repository.PaycheckRepository;
+import com.foreigninone.backend.domain.taxcheck.repository.TaxCheckRepository;
 import com.foreigninone.backend.domain.user.entity.User;
 import com.foreigninone.backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ public class DataInitializer implements CommandLineRunner {
     private final PaycheckRepository paycheckRepository;
     private final CalendarEventRepository calendarEventRepository;
     private final CalendarEventService calendarEventService;
+    private final TaxCheckRepository taxCheckRepository;
 
     @Override
     @Transactional
@@ -54,6 +56,7 @@ public class DataInitializer implements CommandLineRunner {
     public void resetSeedData() {
         log.info("Resetting Seed Data...");
         calendarEventRepository.deleteAllInBatch();
+        taxCheckRepository.deleteAllInBatch();
         paycheckRepository.deleteAllInBatch();
         bankTransactionRepository.deleteAllInBatch();
         documentRepository.deleteAllInBatch();
