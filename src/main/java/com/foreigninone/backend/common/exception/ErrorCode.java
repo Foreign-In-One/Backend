@@ -13,6 +13,7 @@ public enum ErrorCode {
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다."),
     BANK_TRANSACTION_NOT_FOUND(HttpStatus.NOT_FOUND, "BANK_TRANSACTION_NOT_FOUND", "금융 거래 내역을 찾을 수 없습니다."),
     CALENDAR_EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "CALENDAR_EVENT_NOT_FOUND", "캘린더 일정을 찾을 수 없습니다."),
+    EXIT_CHECK_NOT_FOUND(HttpStatus.NOT_FOUND, "EXIT_CHECK_NOT_FOUND", "출국 정산 분석 정보를 찾을 수 없습니다."),
     FILE_UPLOAD_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_UPLOAD_ERROR", "파일 업로드 중 오류가 발생했습니다."),
     OCR_PROCESSING_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "OCR_PROCESSING_ERROR", "OCR 처리 중 오류가 발생했습니다."),
     AI_PROCESSING_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "AI_PROCESSING_ERROR", "AI 분석 중 오류가 발생했습니다."),

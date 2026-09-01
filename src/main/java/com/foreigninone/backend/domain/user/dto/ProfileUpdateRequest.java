@@ -17,8 +17,13 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class ProfileUpdateRequest {
 
+    private String name;
+    private String nationality;
+    private String visaType;
+    private LocalDate entryDate;
     private String employmentStatus;
     private String companyName;
+    private LocalDate workStartDate;
 
     @Min(value = 1, message = "급여일은 1일 이상이어야 합니다.")
     @Max(value = 31, message = "급여일은 31일 이하이어야 합니다.")

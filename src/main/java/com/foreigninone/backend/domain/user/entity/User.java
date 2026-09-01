@@ -66,9 +66,16 @@ public class User {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    public void updateProfile(String employmentStatus, String companyName, Integer payday, LocalDate expectedExitDate, String language) {
+    public void updateProfile(String name, String nationality, String visaType, LocalDate entryDate,
+                               String employmentStatus, String companyName, LocalDate workStartDate,
+                               Integer payday, LocalDate expectedExitDate, String language) {
+        if (name != null) this.name = name;
+        if (nationality != null) this.nationality = nationality;
+        if (visaType != null) this.visaType = visaType;
+        if (entryDate != null) this.entryDate = entryDate;
         if (employmentStatus != null) this.employmentStatus = employmentStatus;
         if (companyName != null) this.companyName = companyName;
+        if (workStartDate != null) this.workStartDate = workStartDate;
         if (payday != null) this.payday = payday;
         if (expectedExitDate != null) this.expectedExitDate = expectedExitDate;
         if (language != null) this.language = language;

@@ -72,6 +72,35 @@ class PaycheckApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("온보딩 프로필 저장 (PATCH /api/profile, name/nationality/visaType/entryDate/workStartDate)")
+    void testUpdateProfileOnboardingFields() throws Exception {
+        ProfileUpdateRequest request = ProfileUpdateRequest.builder()
+                .name("흐엉")
+                .nationality("베트남")
+                .visaType("E-9")
+                .entryDate(LocalDate.of(2025, 3, 1))
+                .employmentStatus("WORKING")
+                .companyName("한빛정밀")
+                .workStartDate(LocalDate.of(2025, 3, 10))
+                .payday(25)
+                .expectedExitDate(LocalDate.of(2027, 3, 1))
+                .language("vi")
+                .build();
+
+        mockMvc.perform(patch("/api/profile")
+                        .header("X-Demo-User-Id", 1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.name").value("흐엉"))
+                .andExpect(jsonPath("$.data.nationality").value("베트남"))
+                .andExpect(jsonPath("$.data.visaType").value("E-9"))
+                .andExpect(jsonPath("$.data.entryDate").value("2025-03-01"))
+                .andExpect(jsonPath("$.data.workStartDate").value("2025-03-10"));
+    }
+
+    @Test
     @DisplayName("Mock Bank 거래내역 조회 (GET /api/mock/bank/transactions 및 GET /api/bank/transactions)")
     void testGetMockBankTransactions() throws Exception {
         // 1. /api/mock/bank/transactions
