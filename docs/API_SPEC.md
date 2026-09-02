@@ -482,3 +482,19 @@ external client / adapter
 ```
 
 실제 API를 Mock으로 변경할 때 Controller/Business Logic을 수정하지 않는다.
+
+---
+
+# 13. Dashboard / Records 조회 API
+
+- `GET /api/dashboard?year=2026`: 선택 연도의 실입금 집계와 전체 이력의 최신 도메인별 결과·최근 3건.
+- `GET /api/records`: 저장된 PayCheck·TaxCheck·ExitCheck 통합 목록.
+- `GET /api/records?type=TAX_CHECK`: 종류 필터. `PAYCHECK`, `TAX_CHECK`, `EXIT_CHECK`를 지원하며 생략하면 전체.
+
+공통 `ApiResponse`를 사용하며 DB 저장·수정·삭제·분석·시뮬레이션을 수행하지 않는다.
+전체 응답 계약, 누락/0원 규칙, 정렬, 개발·배포 전제는
+[`DASHBOARD_RECORDS_IMPLEMENTATION.md`](DASHBOARD_RECORDS_IMPLEMENTATION.md)를 따른다.
+
+개발용 사용자 선택은 기존 API와 동일하며 **인증이 아니다**. 공개 URL에서 실제 개인정보를 제공하면 안 된다.
+실제 실행에는 `paychecks`, `tax_checks`, `exit_checks` 테이블이 모두 필요하다.
+테스트 전용 SQL은 누락된 도메인의 읽기 컬럼을 격리된 H2 DB에 제공할 뿐, 운영 마이그레이션이 아니다.
