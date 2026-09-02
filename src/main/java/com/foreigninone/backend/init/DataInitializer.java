@@ -192,6 +192,44 @@ public class DataInitializer implements CommandLineRunner {
         payslipAugust = documentRepository.save(payslipAugust);
 
         // 8월 거래 & 명세서는 DB에 보관하고, Paycheck 레코드는 아직 생성하지 않음 (상단 [급여 동기화] 버튼 클릭 시 실시간 자동 감지 시연용)
+
+        // ==========================================
+        // 9월 거래 & 명세서 (9월 자동 감지 및 3중 대조 시연용)
+        // ==========================================
+        BankTransaction txSeptember = BankTransaction.builder()
+                .user(user1)
+                .bankName("하나은행")
+                .fintechUseNum("123456789012345678901234")
+                .bankTranId("F123456789U4BC34239Z003")
+                .bankTranDate(LocalDate.of(2026, 9, 25))
+                .tranTime(LocalTime.of(9, 15, 0))
+                .inoutType("입금")
+                .tranType("급여")
+                .printedContent("한국정밀 9월 급여")
+                .tranAmt(BigDecimal.valueOf(2260000))
+                .afterBalanceAmt(BigDecimal.valueOf(9020000))
+                .branchName("분당점")
+                .transactionCategory("SALARY")
+                .build();
+        txSeptember = bankTransactionRepository.save(txSeptember);
+
+        Document payslipSeptember = Document.builder()
+                .user(user1)
+                .documentType(DocumentType.PAYSLIP)
+                .originalFilename("2026년_9월_임금명세서.pdf")
+                .mimeType("application/pdf")
+                .fileSize(198000L)
+                .ocrStatus(OcrStatus.SUCCESS)
+                .extractedData(Map.of(
+                        "payPeriod", "2026-09",
+                        "baseSalary", 2200000,
+                        "overtimeAllowance", 180000,
+                        "deduction", 0,
+                        "netPay", 2380000
+                ))
+                .build();
+        payslipSeptember = documentRepository.save(payslipSeptember);
+
         calendarEventService.syncPaydayEventsForUser(user1);
         calendarEventService.syncExitEvent(user1);
 
