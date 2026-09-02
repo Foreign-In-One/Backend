@@ -5,12 +5,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.foreigninone.backend.common.exception.BusinessException;
 import com.foreigninone.backend.common.exception.ErrorCode;
 import com.foreigninone.backend.domain.agent.config.OpenAiProperties;
+import com.foreigninone.backend.domain.agent.dto.AgentChatResponse;
 import com.foreigninone.backend.domain.agent.dto.AgentPaycheckResponse;
 import com.foreigninone.backend.domain.agent.dto.EmployerQuestionCard;
+import com.foreigninone.backend.domain.exitcheck.entity.ExitCheck;
+import com.foreigninone.backend.domain.exitcheck.repository.ExitCheckRepository;
 import com.foreigninone.backend.domain.paycheck.entity.Paycheck;
 import com.foreigninone.backend.domain.paycheck.entity.PaycheckCaseType;
 import com.foreigninone.backend.domain.paycheck.repository.PaycheckRepository;
 import com.foreigninone.backend.domain.user.entity.User;
+import com.foreigninone.backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -21,6 +25,7 @@ import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.Period;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +37,8 @@ public class AiAgentService {
 
     private final OpenAiProperties openAiProperties;
     private final PaycheckRepository paycheckRepository;
+    private final UserRepository userRepository;
+    private final ExitCheckRepository exitCheckRepository;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -408,5 +415,131 @@ public class AiAgentService {
                         .build();
             }
         }
+    }
+
+    /**
+     * 금융권리 챗봇 질문 응답.
+     * OpenAI가 설정돼 있으면 서버가 직접 조회한 사용자 데이터를 컨텍스트로 실제 답변을 생성하고,
+     * 미설정이거나 호출 실패 시 text=null 을 반환해 클라이언트가 localAnswer() 규칙 엔진으로 폴백하게 한다.
+     */
+    @Transactional(readOnly = true)
+    public AgentChatResponse answerChatQuestion(Long userId, String question, String requestLocale) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        String effectiveLocale = (requestLocale != null && !requestLocale.isBlank())
+                ? requestLocale.trim().toLowerCase()
+                : ((user.getLanguage() != null && !user.getLanguage().isBlank()) ? user.getLanguage().trim().toLowerCase() : "ko");
+
+        if (!openAiProperties.isConfigured()) {
+            log.info("OpenAI API key not configured, chat question will fall back to client rule engine for userId: {}", userId);
+            return AgentChatResponse.builder().ok(false).text(null).error(null).build();
+        }
+
+        try {
+            String context = buildChatContext(user);
+            String content = callOpenAiChat(context, question, effectiveLocale);
+            return AgentChatResponse.builder().ok(true).text(content).error(null).build();
+        } catch (Exception e) {
+            log.warn("OpenAI chat call failed, falling back to client rule engine: {}", e.getMessage());
+            return AgentChatResponse.builder().ok(false).text(null).error(null).build();
+        }
+    }
+
+    private String buildChatContext(User user) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("사용자: %s / 국적 %s / 체류자격 %s%n",
+                user.getName(), nullToDash(user.getNationality()), nullToDash(user.getVisaType())));
+        sb.append(String.format("근로 상태: %s / 사업장 %s / 계약 급여일 %s%n",
+                nullToDash(user.getEmploymentStatus()), nullToDash(user.getCompanyName()),
+                user.getPayday() != null ? "매월 " + user.getPayday() + "일" : "모름"));
+        sb.append(String.format("입국일 %s / 근무 시작일 %s / 예상 출국일 %s%n",
+                dateOrDash(user.getEntryDate()), dateOrDash(user.getWorkStartDate()), dateOrDash(user.getExpectedExitDate())));
+
+        Integer months = monthsWorked(user.getWorkStartDate());
+        if (months != null) sb.append(String.format("총 근속 개월수: 약 %d개월%n", months));
+
+        List<Paycheck> paychecks = paycheckRepository.findByUser_UserIdOrderByPayPeriodDesc(user.getUserId());
+        if (paychecks.isEmpty()) {
+            sb.append("급여 확인 기록: 없음\n");
+        } else {
+            Paycheck latest = paychecks.get(0);
+            sb.append(String.format("최근 급여(%s) 판정: %s / 실입금액 %s원%n",
+                    latest.getPayPeriod(), latest.getStatus(),
+                    latest.getActualAmount() != null ? latest.getActualAmount().toPlainString() : "확인 불가"));
+        }
+
+        exitCheckRepository.findFirstByUser_UserIdOrderByAnalyzedAtDesc(user.getUserId()).ifPresentOrElse(
+                (ExitCheck ec) -> sb.append(String.format("출국 정산 상태: %s / 준비도 %s%%%n",
+                        ec.getStatus(), ec.getReadinessScore() != null ? ec.getReadinessScore() : 0)),
+                () -> sb.append("출국 정산 확인 기록: 없음\n")
+        );
+
+        return sb.toString();
+    }
+
+    private Integer monthsWorked(java.time.LocalDate workStartDate) {
+        if (workStartDate == null) return null;
+        java.time.LocalDate now = java.time.LocalDate.now();
+        if (now.isBefore(workStartDate)) return 0;
+        Period period = Period.between(workStartDate, now);
+        return Math.max(period.getYears() * 12 + period.getMonths(), 0);
+    }
+
+    private String nullToDash(String value) {
+        return (value == null || value.isBlank()) ? "미입력" : value;
+    }
+
+    private String dateOrDash(java.time.LocalDate date) {
+        return date == null ? "미입력" : date.toString();
+    }
+
+    private String callOpenAiChat(String context, String question, String locale) {
+        String systemPrompt =
+                "당신은 한국에서 일하는 외국인 근로자를 돕는 금융권리 AI 어시스턴트입니다.\n" +
+                        "규칙:\n" +
+                        "1. 아래 [확인된 사용자 정보]에 없는 사실은 절대로 지어내지 마세요. 모르면 모른다고 답하세요.\n" +
+                        "2. 반드시 요청 언어로, 2~4문장 이내로 간결하게 답변하세요.\n" +
+                        "3. 순수 텍스트로만 답변하고 마크다운이나 JSON을 쓰지 마세요.";
+
+        String userPrompt = String.format("[확인된 사용자 정보]%n%s%n[질문]%n%s%n%n요청 언어: %s", context, question, locale);
+
+        Map<String, Object> requestBody = Map.of(
+                "model", openAiProperties.getModel(),
+                "messages", List.of(
+                        Map.of("role", "system", "content", systemPrompt),
+                        Map.of("role", "user", "content", userPrompt)
+                ),
+                "temperature", 0.2
+        );
+
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(10));
+        requestFactory.setReadTimeout(Duration.ofSeconds(30));
+
+        RestClient restClient = RestClient.builder()
+                .requestFactory(requestFactory)
+                .baseUrl(openAiProperties.getBaseUrl())
+                .defaultHeader("Authorization", "Bearer " + openAiProperties.getApiKey())
+                .build();
+
+        String responseJson = restClient.post()
+                .uri("/chat/completions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody)
+                .retrieve()
+                .body(String.class);
+
+        JsonNode root;
+        try {
+            root = objectMapper.readTree(responseJson);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse OpenAI chat response", e);
+        }
+        String content = root.path("choices").get(0).path("message").path("content").asText();
+        if (content == null || content.isBlank()) {
+            throw new RuntimeException("OpenAI chat response had no content");
+        }
+        return content.trim();
     }
 }

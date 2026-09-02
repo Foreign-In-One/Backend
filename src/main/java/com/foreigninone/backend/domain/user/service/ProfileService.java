@@ -36,8 +36,13 @@ public class ProfileService {
         java.time.LocalDate oldExitDate = user.getExpectedExitDate();
 
         user.updateProfile(
+                request.getName(),
+                request.getNationality(),
+                request.getVisaType(),
+                request.getEntryDate(),
                 request.getEmploymentStatus(),
                 request.getCompanyName(),
+                request.getWorkStartDate(),
                 request.getPayday(),
                 request.getExpectedExitDate(),
                 request.getLanguage()
