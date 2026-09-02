@@ -20,11 +20,23 @@ public class BackendApplication {
 	}
 
 	private static void loadDotEnv() {
-		Path envPath = Paths.get(".env");
-		if (!Files.exists(envPath)) {
-			envPath = Paths.get("../.env");
+		List<Path> candidatePaths = List.of(
+				Paths.get(".env"),
+				Paths.get("Backend/.env"),
+				Paths.get("../.env"),
+				Paths.get("../../.env")
+		);
+
+		Path envPath = null;
+		for (Path p : candidatePaths) {
+			if (Files.exists(p) && !Files.isDirectory(p)) {
+				envPath = p;
+				break;
+			}
 		}
-		if (Files.exists(envPath)) {
+
+		if (envPath != null) {
+			System.out.println("[BackendApplication] Loading environment variables from: " + envPath.toAbsolutePath());
 			try {
 				List<String> lines = Files.readAllLines(envPath);
 				for (String line : lines) {
@@ -42,8 +54,11 @@ public class BackendApplication {
 						System.setProperty(key, value);
 					}
 				}
-			} catch (Exception ignored) {
+			} catch (Exception e) {
+				System.err.println("[BackendApplication] Failed to load .env: " + e.getMessage());
 			}
+		} else {
+			System.out.println("[BackendApplication] No .env file found in candidate paths.");
 		}
 	}
 

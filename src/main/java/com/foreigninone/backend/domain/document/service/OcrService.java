@@ -37,13 +37,15 @@ public class OcrService {
     private final ObjectMapper objectMapper;
 
     public Map<String, Object> processDocument(Document document) {
+        Map<String, Object> result = null;
+
         // 1. Google Cloud Document AI 시도 (설정된 경우)
         if (documentAiProperties.isConfigured()) {
             try {
                 log.info("Executing Google Cloud Document AI for documentId: {}", document.getDocumentId());
                 Map<String, Object> gcpResult = executeGoogleDocumentAi(document);
                 if (gcpResult != null && !gcpResult.isEmpty() && (gcpResult.containsKey("baseSalary") || gcpResult.containsKey("netPay") || gcpResult.containsKey("depositAmount"))) {
-                    return gcpResult;
+                    result = gcpResult;
                 }
             } catch (Exception e) {
                 log.warn("Google Cloud Document AI call failed, falling back to next engine: {}", e.getMessage());
@@ -51,20 +53,20 @@ public class OcrService {
         }
 
         // 2. OpenAI OCR 시도 (업로드된 실제 파일이 있는 경우)
-        if (document.getFilePath() != null) {
+        if (result == null && document.getFilePath() != null) {
             File file = new File(document.getFilePath());
             if (file.exists() && file.length() > 0) {
                 try {
                     Map<String, Object> openAiResult = executeSmartOpenAiOcr(document, file);
                     if (openAiResult != null && !openAiResult.isEmpty()) {
-                        return openAiResult;
+                        result = openAiResult;
                     }
                 } catch (Exception e) {
                     log.warn("OpenAI OCR processing failed, falling back to regex/mock OCR: {}", e.getMessage());
                 }
 
                 // PDF 텍스트 직접 파싱 시도 (OpenAI 실패 시 fallback)
-                if (isPdfFile(file, document.getMimeType())) {
+                if (result == null && isPdfFile(file, document.getMimeType())) {
                     try (PDDocument pdDoc = Loader.loadPDF(file)) {
                         String text = new PDFTextStripper().getText(pdDoc);
                         if (text != null && !text.isBlank()) {
@@ -74,7 +76,7 @@ public class OcrService {
                             if (!regexResult.isEmpty()) {
                                 Map<String, Object> fallback = generateMockExtractedDataByType(document.getDocumentType());
                                 fallback.forEach(regexResult::putIfAbsent);
-                                return regexResult;
+                                result = regexResult;
                             }
                         }
                     } catch (Exception e) {
@@ -85,8 +87,13 @@ public class OcrService {
         }
 
         // 3. Fallback to mock parser
-        log.info("Using built-in OCR parser fallback for documentId: {}", document.getDocumentId());
-        return generateMockExtractedData(document);
+        if (result == null) {
+            log.info("Using built-in OCR parser fallback for documentId: {}", document.getDocumentId());
+            result = generateMockExtractedData(document);
+        }
+
+        normalizeCandidateAmounts(result, document.getDocumentType());
+        return result;
     }
 
     private boolean isPdfFile(File file, String mimeType) {
@@ -186,11 +193,12 @@ public class OcrService {
                 "11. payday (정기급여일): 근로계약서의 매월 급여지급일 (1~31 정수)\n" +
                 "12. workStartDate (근로개시일): 근로시작일 (YYYY-MM-DD 형식)\n" +
                 "13. contractDurationMonths (계약기간 개월수): 근로계약 기간 개월수\n" +
-                "14. candidateAmounts (문서 내 모든 발견 금액 후보 목록): 문서 표나 텍스트에서 발견된 모든 금액을 라벨과 함께 배열로 나열 [{\"label\": \"기본급\", \"amount\": 2300000}, ...]\n\n" +
+                "14. candidateAmounts (문서 내 모든 발견 금액 후보 목록): 문서 표나 텍스트에서 발견된 모든 금액을 라벨, 금액, 대상필드(targetField)와 함께 배열로 나열 [{\"label\": \"기본급\", \"amount\": 2300000, \"targetField\": \"basePay\"}, ...]\n" +
+                "    (targetField 허용값: 기본급/본봉='basePay', 실지급액/실수령액/입금액='netPay', 각종 수당/식대='allowances', 공제총액/세금='deductions')\n\n" +
                 "【주의사항】\n" +
                 "- 모든 금액 필드는 콤마(,)와 '원' 단위를 제거하고 숫자(Number) 타입으로 반환하세요.\n" +
                 "- 기본급, 지급총액, 실지급액, 잔액 등의 숫자를 문서에서 정확하게 읽어내세요.\n" +
-                "- 사용자가 UI에서 직접 고를 수 있도록 candidateAmounts에 문서에 적힌 모든 항목과 금액을 반드시 포함하세요.\n" +
+                "- 사용자가 UI에서 직접 고를 수 있도록 candidateAmounts에 문서에 적힌 모든 항목과 금액, targetField를 반드시 포함하세요.\n" +
                 "- 반드시 JSON 객체로만 응답하세요.";
     }
 
@@ -333,7 +341,7 @@ public class OcrService {
             if (m.find()) {
                 long val = Long.parseLong(m.group(1).replace(",", ""));
                 result.put("baseSalary", val);
-                candidates.add(Map.of("label", "기본급", "amount", val));
+                candidates.add(Map.of("label", "기본급", "amount", val, "targetField", "basePay"));
             }
         }
         // 실지급액/차인지급액 정규식 매칭
@@ -342,7 +350,7 @@ public class OcrService {
             if (m.find()) {
                 long val = Long.parseLong(m.group(1).replace(",", ""));
                 result.put("netPay", val);
-                candidates.add(Map.of("label", "실지급액", "amount", val));
+                candidates.add(Map.of("label", "실지급액", "amount", val, "targetField", "netPay"));
             }
         }
         // 지급총액 정규식 매칭
@@ -351,7 +359,7 @@ public class OcrService {
             if (m.find()) {
                 long val = Long.parseLong(m.group(1).replace(",", ""));
                 result.put("totalPayment", val);
-                candidates.add(Map.of("label", "지급총액", "amount", val));
+                candidates.add(Map.of("label", "지급총액", "amount", val, "targetField", "basePay"));
             }
         }
         // 공제총액 정규식 매칭
@@ -360,7 +368,7 @@ public class OcrService {
             if (m.find()) {
                 long val = Long.parseLong(m.group(1).replace(",", ""));
                 result.put("deduction", val);
-                candidates.add(Map.of("label", "공제총액", "amount", val));
+                candidates.add(Map.of("label", "공제총액", "amount", val, "targetField", "deductions"));
             }
         }
         // 잔액 정규식 매칭
@@ -369,7 +377,7 @@ public class OcrService {
             if (m.find()) {
                 long val = Long.parseLong(m.group(1).replace(",", ""));
                 result.put("afterBalanceAmt", val);
-                candidates.add(Map.of("label", "거래후잔액", "amount", val));
+                candidates.add(Map.of("label", "거래후잔액", "amount", val, "targetField", "netPay"));
             }
         }
 
@@ -399,11 +407,12 @@ public class OcrService {
                 data.put("companyName", "한국정밀");
                 data.put("paymentDate", "2026-08-25");
                 data.put("candidateAmounts", List.of(
-                        Map.of("label", "기본급", "amount", 2300000),
-                        Map.of("label", "연장근로수당", "amount", 80000),
-                        Map.of("label", "지급총액", "amount", 2380000),
-                        Map.of("label", "실지급액(차인지급액)", "amount", 2380000),
-                        Map.of("label", "실제통장입금액", "amount", 2260000)
+                        Map.of("label", "기본급", "amount", 2300000, "targetField", "basePay"),
+                        Map.of("label", "연장근로수당", "amount", 80000, "targetField", "allowances"),
+                        Map.of("label", "지급총액", "amount", 2380000, "targetField", "basePay"),
+                        Map.of("label", "공제총액", "amount", 0, "targetField", "deductions"),
+                        Map.of("label", "실지급액(차인지급액)", "amount", 2380000, "targetField", "netPay"),
+                        Map.of("label", "실제통장입금액", "amount", 2260000, "targetField", "netPay")
                 ));
             }
             case EMPLOYMENT_CONTRACT -> {
@@ -413,9 +422,9 @@ public class OcrService {
                 data.put("workStartDate", "2025-03-10");
                 data.put("contractDurationMonths", 36);
                 data.put("candidateAmounts", List.of(
-                        Map.of("label", "계약 기본급(월급)", "amount", 2300000),
-                        Map.of("label", "통상시급", "amount", 11005),
-                        Map.of("label", "식대/복리후생비", "amount", 100000)
+                        Map.of("label", "계약 기본급(월급)", "amount", 2300000, "targetField", "basePay"),
+                        Map.of("label", "통상시급", "amount", 11005, "targetField", "basePay"),
+                        Map.of("label", "식대/복리후생비", "amount", 100000, "targetField", "allowances")
                 ));
             }
             case BANK_RECEIPT -> {
@@ -425,8 +434,8 @@ public class OcrService {
                 data.put("depositDate", "2026-08-25");
                 data.put("sender", "한국정밀 8월 급여");
                 data.put("candidateAmounts", List.of(
-                        Map.of("label", "급여 입금액", "amount", 2260000),
-                        Map.of("label", "거래후 잔액", "amount", 6760000)
+                        Map.of("label", "급여 입금액", "amount", 2260000, "targetField", "netPay"),
+                        Map.of("label", "거래후 잔액", "amount", 6760000, "targetField", "netPay")
                 ));
             }
             default -> {
@@ -435,5 +444,72 @@ public class OcrService {
             }
         }
         return data;
+    }
+
+    private void normalizeCandidateAmounts(Map<String, Object> extractedData, DocumentType documentType) {
+        if (extractedData == null) {
+            return;
+        }
+
+        Object candidatesObj = extractedData.get("candidateAmounts");
+        List<Map<String, Object>> normalized = new ArrayList<>();
+
+        if (candidatesObj instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> map) {
+                    Map<String, Object> cand = new LinkedHashMap<>();
+                    map.forEach((k, v) -> cand.put(String.valueOf(k), v));
+
+                    String label = cand.get("label") != null ? String.valueOf(cand.get("label")).trim() : "";
+                    String targetField = cand.get("targetField") != null ? String.valueOf(cand.get("targetField")).trim() : null;
+
+                    if (targetField == null || targetField.isBlank()) {
+                        targetField = resolveTargetField(label, documentType);
+                        cand.put("targetField", targetField);
+                    }
+                    normalized.add(cand);
+                }
+            }
+        }
+
+        // 만약 candidateAmounts가 비어있다면, extractedData에 있는 baseSalary, netPay, overtimeAllowance, deduction 등으로 기본 생성
+        if (normalized.isEmpty()) {
+            if (extractedData.containsKey("baseSalary") && extractedData.get("baseSalary") instanceof Number num) {
+                normalized.add(Map.of("label", "기본급", "amount", num.longValue(), "targetField", "basePay"));
+            }
+            if (extractedData.containsKey("overtimeAllowance") && extractedData.get("overtimeAllowance") instanceof Number num) {
+                normalized.add(Map.of("label", "수당 합계", "amount", num.longValue(), "targetField", "allowances"));
+            }
+            if (extractedData.containsKey("deduction") && extractedData.get("deduction") instanceof Number num) {
+                normalized.add(Map.of("label", "공제총액", "amount", num.longValue(), "targetField", "deductions"));
+            }
+            if (extractedData.containsKey("netPay") && extractedData.get("netPay") instanceof Number num) {
+                normalized.add(Map.of("label", "실지급액", "amount", num.longValue(), "targetField", "netPay"));
+            } else if (extractedData.containsKey("depositAmount") && extractedData.get("depositAmount") instanceof Number num) {
+                normalized.add(Map.of("label", "입금액", "amount", num.longValue(), "targetField", "netPay"));
+            }
+        }
+
+        extractedData.put("candidateAmounts", normalized);
+    }
+
+    private String resolveTargetField(String label, DocumentType documentType) {
+        String norm = label != null ? label.toLowerCase().trim() : "";
+        if (norm.contains("기본급") || norm.contains("본봉") || norm.contains("월급") || norm.contains("base") || norm.contains("시급")) {
+            return "basePay";
+        }
+        if (norm.contains("실지급") || norm.contains("실수령") || norm.contains("차인지급") || norm.contains("net") || norm.contains("입금")) {
+            return "netPay";
+        }
+        if (norm.contains("수당") || norm.contains("연장") || norm.contains("야간") || norm.contains("휴일") || norm.contains("식대") || norm.contains("allowance")) {
+            return "allowances";
+        }
+        if (norm.contains("공제") || norm.contains("세금") || norm.contains("보험") || norm.contains("deduction")) {
+            return "deductions";
+        }
+        if (documentType == DocumentType.EMPLOYMENT_CONTRACT) {
+            return "basePay";
+        }
+        return "netPay";
     }
 }
