@@ -16,6 +16,7 @@ import com.foreigninone.backend.domain.paycheck.entity.PaycheckStatus;
 import com.foreigninone.backend.domain.paycheck.repository.PaycheckRepository;
 import com.foreigninone.backend.domain.user.entity.User;
 import com.foreigninone.backend.domain.user.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -33,6 +34,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
+    private final EntityManager entityManager;
     private final UserRepository userRepository;
     private final BankTransactionRepository bankTransactionRepository;
     private final DocumentRepository documentRepository;
@@ -52,12 +54,15 @@ public class DataInitializer implements CommandLineRunner {
 
     @Transactional
     public void resetSeedData() {
-        log.info("Resetting Seed Data...");
-        calendarEventRepository.deleteAllInBatch();
-        paycheckRepository.deleteAllInBatch();
-        bankTransactionRepository.deleteAllInBatch();
-        documentRepository.deleteAllInBatch();
-        userRepository.deleteAllInBatch();
+        log.info("Resetting Seed Data with AUTO_INCREMENT reset...");
+        entityManager.createNativeQuery("SET FOREIGN_KEY_CHECKS = 0").executeUpdate();
+        entityManager.createNativeQuery("TRUNCATE TABLE calendar_events").executeUpdate();
+        entityManager.createNativeQuery("TRUNCATE TABLE paychecks").executeUpdate();
+        entityManager.createNativeQuery("TRUNCATE TABLE bank_transactions").executeUpdate();
+        entityManager.createNativeQuery("TRUNCATE TABLE exit_checks").executeUpdate();
+        entityManager.createNativeQuery("TRUNCATE TABLE documents").executeUpdate();
+        entityManager.createNativeQuery("TRUNCATE TABLE users").executeUpdate();
+        entityManager.createNativeQuery("SET FOREIGN_KEY_CHECKS = 1").executeUpdate();
 
         initSeedData();
         log.info("Seed Data reset successfully.");
