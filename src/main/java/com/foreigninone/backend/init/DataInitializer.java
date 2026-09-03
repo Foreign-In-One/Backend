@@ -14,9 +14,11 @@ import com.foreigninone.backend.domain.document.repository.DocumentRepository;
 import com.foreigninone.backend.domain.paycheck.entity.Paycheck;
 import com.foreigninone.backend.domain.paycheck.entity.PaycheckStatus;
 import com.foreigninone.backend.domain.paycheck.repository.PaycheckRepository;
+import com.foreigninone.backend.domain.exitcheck.repository.ExitCheckRepository;
 import com.foreigninone.backend.domain.taxcheck.repository.TaxCheckRepository;
 import com.foreigninone.backend.domain.user.entity.User;
 import com.foreigninone.backend.domain.user.repository.UserRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -41,26 +43,42 @@ public class DataInitializer implements CommandLineRunner {
     private final CalendarEventRepository calendarEventRepository;
     private final CalendarEventService calendarEventService;
     private final TaxCheckRepository taxCheckRepository;
+    private final ExitCheckRepository exitCheckRepository;
+    private final EntityManager em;
 
     @Override
     @Transactional
     public void run(String... args) {
-        if (userRepository.count() == 0) {
-            log.info("Initializing Seed Data...");
-            initSeedData();
-            log.info("Seed Data initialized successfully.");
+        if (userRepository.findById(1L).isEmpty()) {
+            log.info("Seed User #1 not found. Safely initializing Seed Data...");
+            resetSeedData();
+            log.info("Seed Data initialized successfully with User #1.");
         }
     }
 
     @Transactional
     public void resetSeedData() {
-        log.info("Resetting Seed Data...");
+        log.info("Resetting Seed Data safely...");
         calendarEventRepository.deleteAllInBatch();
+        exitCheckRepository.deleteAllInBatch();
         taxCheckRepository.deleteAllInBatch();
         paycheckRepository.deleteAllInBatch();
         bankTransactionRepository.deleteAllInBatch();
         documentRepository.deleteAllInBatch();
         userRepository.deleteAllInBatch();
+
+        // PostgreSQL 등 시퀀스를 사용하는 환경에서 1번부터 다시 시작하도록 시퀀스 번호 리셋 (MySQL 등에서는 무시됨)
+        try {
+            em.createNativeQuery("ALTER SEQUENCE IF EXISTS users_user_id_seq RESTART WITH 1").executeUpdate();
+            em.createNativeQuery("ALTER SEQUENCE IF EXISTS bank_transactions_transaction_id_seq RESTART WITH 1").executeUpdate();
+            em.createNativeQuery("ALTER SEQUENCE IF EXISTS documents_document_id_seq RESTART WITH 1").executeUpdate();
+            em.createNativeQuery("ALTER SEQUENCE IF EXISTS paychecks_paycheck_id_seq RESTART WITH 1").executeUpdate();
+            em.createNativeQuery("ALTER SEQUENCE IF EXISTS calendar_events_event_id_seq RESTART WITH 1").executeUpdate();
+            em.createNativeQuery("ALTER SEQUENCE IF EXISTS exit_checks_exit_check_id_seq RESTART WITH 1").executeUpdate();
+            em.createNativeQuery("ALTER SEQUENCE IF EXISTS tax_checks_tax_check_id_seq RESTART WITH 1").executeUpdate();
+        } catch (Exception e) {
+            log.debug("Sequence reset skipped: {}", e.getMessage());
+        }
 
         initSeedData();
         log.info("Seed Data reset successfully.");
