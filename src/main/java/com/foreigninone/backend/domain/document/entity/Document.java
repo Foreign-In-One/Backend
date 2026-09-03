@@ -1,11 +1,12 @@
 package com.foreigninone.backend.domain.document.entity;
 
-import com.foreigninone.backend.common.util.JsonMapConverter;
 import com.foreigninone.backend.domain.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -48,6 +49,7 @@ public class Document {
     @Column(name = "ocr_status", length = 20, nullable = false)
     private OcrStatus ocrStatus;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "extracted_data", columnDefinition = "JSON")
     private Map<String, Object> extractedData;
 
