@@ -25,7 +25,9 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.sql.DataSource;
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -45,6 +47,22 @@ public class DataInitializer implements CommandLineRunner {
     private final TaxCheckRepository taxCheckRepository;
     private final ExitCheckRepository exitCheckRepository;
     private final EntityManager em;
+    private final DataSource dataSource;
+
+    private volatile Boolean isPostgres;
+
+    private boolean isPostgreSql() {
+        if (isPostgres == null) {
+            try (Connection conn = dataSource.getConnection()) {
+                String dbName = conn.getMetaData().getDatabaseProductName();
+                isPostgres = dbName != null && dbName.toLowerCase().contains("postgres");
+            } catch (Exception e) {
+                log.warn("Failed to detect database product name: {}", e.getMessage());
+                return false;
+            }
+        }
+        return isPostgres;
+    }
 
     @Override
     @Transactional
@@ -59,6 +77,29 @@ public class DataInitializer implements CommandLineRunner {
     @Transactional
     public void resetSeedData() {
         log.info("Resetting Seed Data safely...");
+
+        // 1. PostgreSQL 환경: 모든 테이블을 비우고 PK 시퀀스를 1로 자동 리셋 (외래키 CASCADE)
+        if (isPostgreSql()) {
+            try {
+                em.createNativeQuery(
+                    "TRUNCATE TABLE calendar_events, exit_checks, tax_checks, paychecks, " +
+                    "bank_transactions, documents, users RESTART IDENTITY CASCADE"
+                ).executeUpdate();
+                log.info("PostgreSQL TRUNCATE with RESTART IDENTITY completed.");
+            } catch (Exception e) {
+                log.warn("TRUNCATE failed (fallback to JPA delete): {}", e.getMessage());
+                fallbackDeleteAll();
+            }
+        } else {
+            // 2. MySQL 등 TRUNCATE CASCADE가 지원되지 않는 로컬 환경용 폴백
+            fallbackDeleteAll();
+        }
+
+        initSeedData();
+        log.info("Seed Data reset successfully.");
+    }
+
+    private void fallbackDeleteAll() {
         calendarEventRepository.deleteAllInBatch();
         exitCheckRepository.deleteAllInBatch();
         taxCheckRepository.deleteAllInBatch();
@@ -66,22 +107,6 @@ public class DataInitializer implements CommandLineRunner {
         bankTransactionRepository.deleteAllInBatch();
         documentRepository.deleteAllInBatch();
         userRepository.deleteAllInBatch();
-
-        // PostgreSQL 등 시퀀스를 사용하는 환경에서 1번부터 다시 시작하도록 시퀀스 번호 리셋 (MySQL 등에서는 무시됨)
-        try {
-            em.createNativeQuery("ALTER SEQUENCE IF EXISTS users_user_id_seq RESTART WITH 1").executeUpdate();
-            em.createNativeQuery("ALTER SEQUENCE IF EXISTS bank_transactions_transaction_id_seq RESTART WITH 1").executeUpdate();
-            em.createNativeQuery("ALTER SEQUENCE IF EXISTS documents_document_id_seq RESTART WITH 1").executeUpdate();
-            em.createNativeQuery("ALTER SEQUENCE IF EXISTS paychecks_paycheck_id_seq RESTART WITH 1").executeUpdate();
-            em.createNativeQuery("ALTER SEQUENCE IF EXISTS calendar_events_event_id_seq RESTART WITH 1").executeUpdate();
-            em.createNativeQuery("ALTER SEQUENCE IF EXISTS exit_checks_exit_check_id_seq RESTART WITH 1").executeUpdate();
-            em.createNativeQuery("ALTER SEQUENCE IF EXISTS tax_checks_tax_check_id_seq RESTART WITH 1").executeUpdate();
-        } catch (Exception e) {
-            log.debug("Sequence reset skipped: {}", e.getMessage());
-        }
-
-        initSeedData();
-        log.info("Seed Data reset successfully.");
     }
 
     private void initSeedData() {
@@ -103,6 +128,7 @@ public class DataInitializer implements CommandLineRunner {
                 .language("ko")
                 .build();
         user1 = userRepository.save(user1);
+        log.info(">>> 민수(User #1) 생성 완료! 실제 ID: {}", user1.getUserId());
 
         // Document 1: 근로계약서
         Document contractDoc = Document.builder()
