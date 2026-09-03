@@ -48,7 +48,6 @@ public class Document {
     @Column(name = "ocr_status", length = 20, nullable = false)
     private OcrStatus ocrStatus;
 
-    @Convert(converter = JsonMapConverter.class)
     @Column(name = "extracted_data", columnDefinition = "JSON")
     private Map<String, Object> extractedData;
 
