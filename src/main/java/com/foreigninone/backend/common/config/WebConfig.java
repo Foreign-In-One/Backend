@@ -14,7 +14,8 @@ public class WebConfig implements WebMvcConfigurer {
                         "http://localhost:3000",
                         "http://localhost:3001",
                         "http://127.0.0.1:3000",
-                        "http://127.0.0.1:3001"
+                        "http://127.0.0.1:3001",
+                        "https://paycheck-chi.vercel.app"
                 )
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
