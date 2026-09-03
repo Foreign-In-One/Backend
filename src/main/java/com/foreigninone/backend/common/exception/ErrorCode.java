@@ -10,6 +10,8 @@ public enum ErrorCode {
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "잘못된 요청입니다."),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "사용자를 찾을 수 없습니다."),
     PAYCHECK_NOT_FOUND(HttpStatus.NOT_FOUND, "PAYCHECK_NOT_FOUND", "급여 분석 정보를 찾을 수 없습니다."),
+    TAXCHECK_NOT_FOUND(HttpStatus.NOT_FOUND, "TAXCHECK_NOT_FOUND", "세금 분석 정보를 찾을 수 없습니다."),
+    TAXCHECK_SNAPSHOT_INVALID(HttpStatus.CONFLICT, "TAXCHECK_SNAPSHOT_INVALID", "저장된 분석 입력을 확인할 수 없습니다. 다시 분석하세요."),
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다."),
     BANK_TRANSACTION_NOT_FOUND(HttpStatus.NOT_FOUND, "BANK_TRANSACTION_NOT_FOUND", "금융 거래 내역을 찾을 수 없습니다."),
     CALENDAR_EVENT_NOT_FOUND(HttpStatus.NOT_FOUND, "CALENDAR_EVENT_NOT_FOUND", "캘린더 일정을 찾을 수 없습니다."),
