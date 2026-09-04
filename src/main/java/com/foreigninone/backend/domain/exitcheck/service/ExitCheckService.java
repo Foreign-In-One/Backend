@@ -2,6 +2,7 @@ package com.foreigninone.backend.domain.exitcheck.service;
 
 import com.foreigninone.backend.common.exception.BusinessException;
 import com.foreigninone.backend.common.exception.ErrorCode;
+import com.foreigninone.backend.domain.calendar.service.CalendarEventService;
 import com.foreigninone.backend.domain.document.entity.Document;
 import com.foreigninone.backend.domain.document.repository.DocumentRepository;
 import com.foreigninone.backend.domain.exitcheck.dto.ExitCheckAnalyzeRequest;
@@ -28,6 +29,7 @@ public class ExitCheckService {
     private final UserRepository userRepository;
     private final DocumentRepository documentRepository;
     private final ExitCheckRuleEngine ruleEngine;
+    private final CalendarEventService calendarEventService;
 
     @Transactional(readOnly = true)
     public List<ExitCheckResponse> getExitChecks(Long userId) {
@@ -94,6 +96,7 @@ public class ExitCheckService {
         );
 
         ExitCheck saved = exitCheckRepository.save(exitCheck);
+        calendarEventService.syncExitCheckEvent(saved);
         return ExitCheckResponse.from(saved);
     }
 }

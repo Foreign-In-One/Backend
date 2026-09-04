@@ -240,6 +240,19 @@ class TaxCheckApiIntegrationTest {
         assertThat(taxChecks.count()).isZero();
     }
 
+    @Test
+    void analyzeSyncsCalendarTaxEvent() throws Exception {
+        JsonNode created = analyze(user.getUserId(), confirmed("30000000", "2000000"));
+        long taxCheckId = created.path("taxCheckId").asLong();
+
+        mvc.perform(get("/api/calendar/events").header("X-Demo-User-Id", user.getUserId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.eventType == 'TAX' && @.title == '2026년 귀속 연말정산 서류 제출 기한')].startAt").value(org.hamcrest.Matchers.hasItem("2027-01-25T09:00:00")))
+                .andExpect(jsonPath("$.data[?(@.eventType == 'TAX' && @.title == '2026년 귀속 연말정산 서류 제출 기한')].endAt").value(org.hamcrest.Matchers.hasItem("2027-01-25T18:00:00")))
+                .andExpect(jsonPath("$.data[?(@.eventType == 'TAX' && @.title == '2026년 귀속 연말정산 서류 제출 기한')].sourceId").value(org.hamcrest.Matchers.hasItem((int) taxCheckId)))
+                .andExpect(jsonPath("$.data[?(@.eventType == 'TAX' && @.title == '2026년 귀속 연말정산 서류 제출 기한')].sourceType").value(org.hamcrest.Matchers.hasItem("SYSTEM")));
+    }
+
     private JsonNode analyze(Long userId, String body) throws Exception {
         String json = mvc.perform(post("/api/tax-checks/analyze").header("X-Demo-User-Id", userId)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
