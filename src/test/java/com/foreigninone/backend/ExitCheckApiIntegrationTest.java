@@ -105,4 +105,31 @@ class ExitCheckApiIntegrationTest {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].insuranceStatus").value("MISSING_DOCUMENT"));
     }
+
+    @Test
+    @DisplayName("출국 정산 분석 시 캘린더 이벤트 동기화 검증 (출국일 및 D-30)")
+    void testAnalyzeExitCheckSyncsCalendarEvents() throws Exception {
+        LocalDate exitDate = LocalDate.of(2027, 5, 20);
+        ExitCheckAnalyzeRequest request = ExitCheckAnalyzeRequest.builder()
+                .expectedExitDate(exitDate)
+                .hasInsuranceRecord(true)
+                .hasOwnAccount(true)
+                .hasExitProof(true)
+                .pensionDeducted(false)
+                .hasRecentPayslip(true)
+                .build();
+
+        mockMvc.perform(post("/api/exit-checks/analyze")
+                        .header("X-Demo-User-Id", 1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        // 캘린더 이벤트 조회 검증
+        mockMvc.perform(get("/api/calendar/events")
+                        .header("X-Demo-User-Id", 1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.eventType == 'EXIT' && @.title == '예상 출국일')].startAt").value(org.hamcrest.Matchers.hasItem("2027-05-20T09:00:00")))
+                .andExpect(jsonPath("$.data[?(@.eventType == 'EXIT' && @.title == '출국만기보험/퇴직금 신청 기한')].startAt").value(org.hamcrest.Matchers.hasItem("2027-04-20T09:00:00")));
+    }
 }

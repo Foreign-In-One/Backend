@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.foreigninone.backend.common.exception.BusinessException;
 import com.foreigninone.backend.common.exception.ErrorCode;
+import com.foreigninone.backend.domain.calendar.service.CalendarEventService;
 import com.foreigninone.backend.domain.document.entity.Document;
 import com.foreigninone.backend.domain.document.entity.DocumentType;
 import com.foreigninone.backend.domain.document.repository.DocumentRepository;
@@ -35,6 +36,7 @@ public class TaxCheckService {
     private final UserRepository userRepository;
     private final PaycheckRepository paycheckRepository;
     private final DocumentRepository documentRepository;
+    private final CalendarEventService calendarEventService;
     private final ObjectMapper objectMapper;
 
     public List<TaxCheckResponse> getTaxChecks(Long userId, Integer taxYear) {
@@ -77,6 +79,7 @@ public class TaxCheckService {
                 .status(TaxCheckStatus.valueOf(result.status()))
                 .analysisSummary(result.analysisSummary()).nextAction(result.nextAction())
                 .analyzedAt(LocalDateTime.now(KOREA)).build());
+        calendarEventService.syncTaxCheckEvent(saved);
         return response(saved, snapshot, false, result);
     }
 
