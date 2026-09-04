@@ -9,7 +9,9 @@ import com.foreigninone.backend.domain.calendar.entity.CalendarEvent;
 import com.foreigninone.backend.domain.calendar.entity.EventType;
 import com.foreigninone.backend.domain.calendar.entity.SourceType;
 import com.foreigninone.backend.domain.calendar.repository.CalendarEventRepository;
+import com.foreigninone.backend.domain.exitcheck.entity.ExitCheck;
 import com.foreigninone.backend.domain.paycheck.entity.Paycheck;
+import com.foreigninone.backend.domain.taxcheck.entity.TaxCheck;
 import com.foreigninone.backend.domain.user.entity.User;
 import com.foreigninone.backend.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -211,40 +213,162 @@ public class CalendarEventService {
     }
 
     @Transactional
-    public void syncExitEvent(User user) {
-        if (user == null || user.getExpectedExitDate() == null) {
+    public void syncTaxCheckEvent(TaxCheck taxCheck) {
+        if (taxCheck == null || taxCheck.getUser() == null || taxCheck.getTaxYear() == null) {
             return;
         }
 
-        LocalDate exitDate = user.getExpectedExitDate();
-        LocalDateTime startAt = exitDate.atTime(9, 0, 0);
-        LocalDateTime endAt = exitDate.atTime(18, 0, 0);
+        User user = taxCheck.getUser();
+        int taxYear = taxCheck.getTaxYear();
+        Long sourceId = taxCheck.getTaxCheckId();
 
-        Long sourceId = 999999L;
+        LocalDate taxDate = LocalDate.of(taxYear + 1, 1, 25);
+        LocalDateTime startAt = taxDate.atTime(9, 0, 0);
+        LocalDateTime endAt = taxDate.atTime(18, 0, 0);
 
-        Optional<CalendarEvent> existingOpt = calendarEventRepository
-                .findByUser_UserIdAndSourceTypeAndSourceId(user.getUserId(), SourceType.SYSTEM, sourceId);
+        String title = String.format("%d년 귀속 연말정산 서류 제출 기한", taxYear);
+        String description = "회사 연말정산 담당자에게 소득·세액공제 증빙 서류 제출";
+        String status = "SCHEDULED";
 
-        String title = "예상 출국일";
-        String description = String.format("체류기간 만료 및 출국 예정일 (%s)", exitDate);
+        Optional<CalendarEvent> existingOpt = Optional.empty();
+        if (sourceId != null) {
+            existingOpt = calendarEventRepository
+                    .findByUser_UserIdAndSourceTypeAndSourceId(user.getUserId(), SourceType.SYSTEM, sourceId);
+        }
+
+        if (existingOpt.isEmpty()) {
+            List<CalendarEvent> events = calendarEventRepository.findByUser_UserIdOrderByStartAtAsc(user.getUserId());
+            existingOpt = events.stream()
+                    .filter(e -> e.getEventType() == EventType.TAX && (
+                            (e.getTitle() != null && e.getTitle().contains(taxYear + "년 귀속")) ||
+                            (e.getStartAt() != null && e.getStartAt().toLocalDate().equals(taxDate))
+                    ))
+                    .findFirst();
+        }
 
         if (existingOpt.isPresent()) {
             CalendarEvent event = existingOpt.get();
-            event.update(title, description, startAt, endAt, "SCHEDULED");
+            event.update(title, description, startAt, endAt, status);
+            event.setSourceType(SourceType.SYSTEM);
+            if (sourceId != null) {
+                event.setSourceId(sourceId);
+            }
+            log.info("Updated CalendarEvent for TaxCheck ID: {}, Year: {}", sourceId, taxYear);
         } else {
-            CalendarEvent event = CalendarEvent.builder()
+            CalendarEvent newEvent = CalendarEvent.builder()
                     .user(user)
-                    .eventType(EventType.EXIT)
+                    .eventType(EventType.TAX)
                     .title(title)
                     .description(description)
                     .startAt(startAt)
                     .endAt(endAt)
                     .sourceType(SourceType.SYSTEM)
                     .sourceId(sourceId)
+                    .status(status)
+                    .build();
+            calendarEventRepository.save(newEvent);
+            log.info("Created CalendarEvent for TaxCheck ID: {}, Year: {}", sourceId, taxYear);
+        }
+    }
+
+    @Transactional
+    public void syncExitEvent(User user) {
+        if (user == null || user.getExpectedExitDate() == null) {
+            return;
+        }
+        syncExitEvents(user, user.getExpectedExitDate());
+    }
+
+    @Transactional
+    public void syncExitCheckEvent(ExitCheck exitCheck) {
+        if (exitCheck == null || exitCheck.getUser() == null) {
+            return;
+        }
+        LocalDate exitDate = exitCheck.getExpectedExitDate() != null
+                ? exitCheck.getExpectedExitDate()
+                : exitCheck.getUser().getExpectedExitDate();
+        if (exitDate == null) {
+            return;
+        }
+        syncExitEvents(exitCheck.getUser(), exitDate);
+    }
+
+    private void syncExitEvents(User user, LocalDate exitDate) {
+        Long userId = user.getUserId();
+
+        // 1. 예상 출국일 (D-Day)
+        LocalDateTime exitStartAt = exitDate.atTime(9, 0, 0);
+        LocalDateTime exitEndAt = exitDate.atTime(18, 0, 0);
+        Long exitSourceId = 999999L;
+        String exitTitle = "예상 출국일";
+        String exitDescription = String.format("체류기간 만료 및 출국 예정일 (%s)", exitDate);
+
+        Optional<CalendarEvent> exitOpt = calendarEventRepository
+                .findByUser_UserIdAndSourceTypeAndSourceId(userId, SourceType.SYSTEM, exitSourceId);
+        if (exitOpt.isEmpty()) {
+            List<CalendarEvent> events = calendarEventRepository.findByUser_UserIdOrderByStartAtAsc(userId);
+            exitOpt = events.stream()
+                    .filter(e -> e.getEventType() == EventType.EXIT && "예상 출국일".equals(e.getTitle()))
+                    .findFirst();
+        }
+
+        if (exitOpt.isPresent()) {
+            CalendarEvent event = exitOpt.get();
+            event.update(exitTitle, exitDescription, exitStartAt, exitEndAt, "SCHEDULED");
+            event.setSourceType(SourceType.SYSTEM);
+            event.setSourceId(exitSourceId);
+        } else {
+            CalendarEvent event = CalendarEvent.builder()
+                    .user(user)
+                    .eventType(EventType.EXIT)
+                    .title(exitTitle)
+                    .description(exitDescription)
+                    .startAt(exitStartAt)
+                    .endAt(exitEndAt)
+                    .sourceType(SourceType.SYSTEM)
+                    .sourceId(exitSourceId)
                     .status("SCHEDULED")
                     .build();
             calendarEventRepository.save(event);
         }
-        log.info("Synced Exit event for user: {}", user.getUserId());
+
+        // 2. 출국 1개월 전(D-30) 출국만기보험/퇴직금 신청 기한
+        LocalDate d30Date = exitDate.minusDays(30);
+        LocalDateTime d30StartAt = d30Date.atTime(9, 0, 0);
+        LocalDateTime d30EndAt = d30Date.atTime(18, 0, 0);
+        Long d30SourceId = 999998L;
+        String d30Title = "출국만기보험/퇴직금 신청 기한";
+        String d30Description = "출국 1개월 전 삼성화재 출국만기보험 신청 및 공항수령/계좌송금 접수";
+
+        Optional<CalendarEvent> d30Opt = calendarEventRepository
+                .findByUser_UserIdAndSourceTypeAndSourceId(userId, SourceType.SYSTEM, d30SourceId);
+        if (d30Opt.isEmpty()) {
+            List<CalendarEvent> events = calendarEventRepository.findByUser_UserIdOrderByStartAtAsc(userId);
+            d30Opt = events.stream()
+                    .filter(e -> e.getEventType() == EventType.EXIT && e.getTitle() != null && e.getTitle().contains("출국만기보험"))
+                    .findFirst();
+        }
+
+        if (d30Opt.isPresent()) {
+            CalendarEvent event = d30Opt.get();
+            event.update(d30Title, d30Description, d30StartAt, d30EndAt, "SCHEDULED");
+            event.setSourceType(SourceType.SYSTEM);
+            event.setSourceId(d30SourceId);
+        } else {
+            CalendarEvent event = CalendarEvent.builder()
+                    .user(user)
+                    .eventType(EventType.EXIT)
+                    .title(d30Title)
+                    .description(d30Description)
+                    .startAt(d30StartAt)
+                    .endAt(d30EndAt)
+                    .sourceType(SourceType.SYSTEM)
+                    .sourceId(d30SourceId)
+                    .status("SCHEDULED")
+                    .build();
+            calendarEventRepository.save(event);
+        }
+
+        log.info("Synced Exit events (departure + D-30) for user: {}", userId);
     }
 }
