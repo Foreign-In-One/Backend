@@ -356,7 +356,7 @@ public class CalendarEventService {
         LocalDateTime aStart = analyzedAt.toLocalDate().atTime(9, 0, 0);
         LocalDateTime aEnd = analyzedAt.toLocalDate().atTime(18, 0, 0);
         if (analysisOpt.isPresent()) {
-            analysisOpt.get().update(analysisTitle, analysisDesc, aStart, aEnd, "COMPLETED");
+            analysisOpt.get().update(analysisTitle, analysisDesc, aStart, aEnd, "SCHEDULED");
         } else {
             CalendarEvent aEvent = CalendarEvent.builder()
                     .user(user)
@@ -367,7 +367,7 @@ public class CalendarEventService {
                     .endAt(aEnd)
                     .sourceType(SourceType.SYSTEM)
                     .sourceId(analysisSourceId)
-                    .status("COMPLETED")
+                    .status("SCHEDULED")
                     .build();
             calendarEventRepository.save(aEvent);
         }
