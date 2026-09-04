@@ -166,6 +166,34 @@ public class CalendarEventService {
             calendarEventRepository.save(newEvent);
             log.info("Created CalendarEvent for Paycheck ID: {}", sourceId);
         }
+
+        // 2. 분석 당일 점검 완료 일정 (오늘 핀)
+        LocalDateTime analyzedAt = paycheck.getAnalyzedAt() != null ? paycheck.getAnalyzedAt() : LocalDateTime.now();
+        Long analysisSourceId = sourceId != null ? sourceId * 1000L + 1L : 777001L;
+        Optional<CalendarEvent> analysisOpt = calendarEventRepository
+                .findByUser_UserIdAndSourceTypeAndSourceId(user.getUserId(), SourceType.PAYCHECK, analysisSourceId);
+        String analysisTitle = title.replace("입금", "점검 완료");
+        if (!analysisTitle.contains("점검 완료")) {
+            analysisTitle = title + " 점검 완료";
+        }
+        LocalDateTime aStart = analyzedAt.toLocalDate().atTime(9, 0, 0);
+        LocalDateTime aEnd = analyzedAt.toLocalDate().atTime(18, 0, 0);
+        if (analysisOpt.isPresent()) {
+            analysisOpt.get().update(analysisTitle, description, aStart, aEnd, "SCHEDULED");
+        } else {
+            CalendarEvent aEvent = CalendarEvent.builder()
+                    .user(user)
+                    .eventType(EventType.PAYCHECK)
+                    .title(analysisTitle)
+                    .description(description)
+                    .startAt(aStart)
+                    .endAt(aEnd)
+                    .sourceType(SourceType.PAYCHECK)
+                    .sourceId(analysisSourceId)
+                    .status("SCHEDULED")
+                    .build();
+            calendarEventRepository.save(aEvent);
+        }
     }
 
     @Transactional
@@ -269,6 +297,32 @@ public class CalendarEventService {
             calendarEventRepository.save(newEvent);
             log.info("Created CalendarEvent for TaxCheck ID: {}, Year: {}", sourceId, taxYear);
         }
+
+        // 2. 분석 당일 점검 완료 일정 (오늘 핀)
+        LocalDateTime analyzedAt = taxCheck.getAnalyzedAt() != null ? taxCheck.getAnalyzedAt() : LocalDateTime.now();
+        Long analysisSourceId = 888000L + taxYear;
+        Optional<CalendarEvent> analysisOpt = calendarEventRepository
+                .findByUser_UserIdAndSourceTypeAndSourceId(user.getUserId(), SourceType.SYSTEM, analysisSourceId);
+        String analysisTitle = String.format("%d년 귀속 세무 점검 완료", taxYear);
+        String analysisDesc = taxCheck.getAnalysisSummary() != null ? taxCheck.getAnalysisSummary() : "연말정산 및 세무 점검 결과 확인";
+        LocalDateTime aStart = analyzedAt.toLocalDate().atTime(9, 0, 0);
+        LocalDateTime aEnd = analyzedAt.toLocalDate().atTime(18, 0, 0);
+        if (analysisOpt.isPresent()) {
+            analysisOpt.get().update(analysisTitle, analysisDesc, aStart, aEnd, "SCHEDULED");
+        } else {
+            CalendarEvent aEvent = CalendarEvent.builder()
+                    .user(user)
+                    .eventType(EventType.TAX)
+                    .title(analysisTitle)
+                    .description(analysisDesc)
+                    .startAt(aStart)
+                    .endAt(aEnd)
+                    .sourceType(SourceType.SYSTEM)
+                    .sourceId(analysisSourceId)
+                    .status("SCHEDULED")
+                    .build();
+            calendarEventRepository.save(aEvent);
+        }
     }
 
     @Transactional
@@ -287,10 +341,36 @@ public class CalendarEventService {
         LocalDate exitDate = exitCheck.getExpectedExitDate() != null
                 ? exitCheck.getExpectedExitDate()
                 : exitCheck.getUser().getExpectedExitDate();
-        if (exitDate == null) {
-            return;
+        if (exitDate != null) {
+            syncExitEvents(exitCheck.getUser(), exitDate);
         }
-        syncExitEvents(exitCheck.getUser(), exitDate);
+
+        // 3. 분석 당일 출국 점검 완료 일정 (오늘 핀)
+        User user = exitCheck.getUser();
+        LocalDateTime analyzedAt = exitCheck.getAnalyzedAt() != null ? exitCheck.getAnalyzedAt() : LocalDateTime.now();
+        Long analysisSourceId = 999990L;
+        Optional<CalendarEvent> analysisOpt = calendarEventRepository
+                .findByUser_UserIdAndSourceTypeAndSourceId(user.getUserId(), SourceType.SYSTEM, analysisSourceId);
+        String analysisTitle = "출국 정산 점검 완료";
+        String analysisDesc = exitCheck.getAnalysisSummary() != null ? exitCheck.getAnalysisSummary() : "출국 전 퇴직금 및 보험 점검 완료";
+        LocalDateTime aStart = analyzedAt.toLocalDate().atTime(9, 0, 0);
+        LocalDateTime aEnd = analyzedAt.toLocalDate().atTime(18, 0, 0);
+        if (analysisOpt.isPresent()) {
+            analysisOpt.get().update(analysisTitle, analysisDesc, aStart, aEnd, "COMPLETED");
+        } else {
+            CalendarEvent aEvent = CalendarEvent.builder()
+                    .user(user)
+                    .eventType(EventType.EXIT)
+                    .title(analysisTitle)
+                    .description(analysisDesc)
+                    .startAt(aStart)
+                    .endAt(aEnd)
+                    .sourceType(SourceType.SYSTEM)
+                    .sourceId(analysisSourceId)
+                    .status("COMPLETED")
+                    .build();
+            calendarEventRepository.save(aEvent);
+        }
     }
 
     private void syncExitEvents(User user, LocalDate exitDate) {
