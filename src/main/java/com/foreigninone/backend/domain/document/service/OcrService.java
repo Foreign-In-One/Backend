@@ -241,12 +241,9 @@ public class OcrService {
             }
         }
 
-        // 실지급액이 없고 지급총액만 있는 경우 또는 반대 경우 정규화
-        if (!extracted.containsKey("netPay") && extracted.containsKey("totalPayment")) {
-            extracted.put("netPay", extracted.get("totalPayment"));
-        } else if (!extracted.containsKey("totalPayment") && extracted.containsKey("netPay")) {
-            extracted.put("totalPayment", extracted.get("netPay"));
-        }
+        // netPay가 없고 totalPayment만 있어도 자동 대입하지 않음.
+        // totalPayment(지급총액, 세전)와 netPay(실지급액, 세후)는 다른 개념이므로
+        // candidateAmounts에 후보로만 포함되어 사용자가 직접 선택하도록 함.
 
         if (extracted.isEmpty() || (!extracted.containsKey("baseSalary") && !extracted.containsKey("netPay") && !extracted.containsKey("depositAmount"))) {
             Map<String, Object> fallback = generateMockExtractedDataByType(documentType);
@@ -394,16 +391,16 @@ public class OcrService {
                 data.put("baseSalary", 2300000);
                 data.put("totalPayment", 2380000);
                 data.put("overtimeAllowance", 80000);
-                data.put("deduction", 0);
-                data.put("netPay", 2380000);
+                data.put("deduction", 120000);
+                // netPay는 명확히 명세서에서 읽은 값이 있을 때만 설정 (totalPayment를 netPay로 자동 대입하지 않음)
                 data.put("companyName", "한국정밀");
                 data.put("paymentDate", "2026-08-25");
                 data.put("candidateAmounts", List.of(
                         Map.of("label", "기본급", "amount", 2300000),
                         Map.of("label", "연장근로수당", "amount", 80000),
-                        Map.of("label", "지급총액", "amount", 2380000),
-                        Map.of("label", "실지급액(차인지급액)", "amount", 2380000),
-                        Map.of("label", "실제통장입금액", "amount", 2260000)
+                        Map.of("label", "지급총액(세전)", "amount", 2380000),
+                        Map.of("label", "공제총액", "amount", 120000),
+                        Map.of("label", "실지급액(차인지급액)", "amount", 2260000)
                 ));
             }
             case EMPLOYMENT_CONTRACT -> {
