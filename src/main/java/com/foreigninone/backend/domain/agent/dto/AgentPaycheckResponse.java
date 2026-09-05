@@ -14,6 +14,7 @@ import java.util.List;
 public class AgentPaycheckResponse {
     private String caseType;
     private String summary;
+    private List<String> reasons;
     private List<String> requiredEvidence;
     private List<String> nextActions;
     private String messageForEmployer;
