@@ -4,6 +4,11 @@ server:
 spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
+      enabled: true
 
 paycycle:
   ai:

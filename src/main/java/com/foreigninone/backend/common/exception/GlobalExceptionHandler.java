@@ -49,6 +49,14 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error("요청한 리소스를 찾을 수 없습니다: " + e.getResourcePath(), "RESOURCE_NOT_FOUND"));
     }
 
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMaxUploadSizeExceededException(org.springframework.web.multipart.MaxUploadSizeExceededException e) {
+        log.warn("File upload size exceeded: {}", e.getMessage());
+        return ResponseEntity
+                .badRequest()
+                .body(ApiResponse.error("업로드 파일 크기는 최대 20MB를 초과할 수 없습니다.", "FILE_SIZE_EXCEEDED"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
         log.error("Unhandled Exception: ", e);
