@@ -116,6 +116,7 @@ public class AiAgentService {
                                         "4. 반드시 아래 JSON 형식으로만 응답하세요.\n" +
                                         "{\n" +
                                         "  \"summary\": \"...\",\n" +
+                                        "  \"reasons\": [\"추정 원인 1\", \"추정 원인 2\"],\n" +
                                         "  \"requiredEvidence\": [\"...\"],\n" +
                                         "  \"nextActions\": [\"...\"],\n" +
                                         "  \"messageForEmployer\": \"...\",\n" +
@@ -164,6 +165,13 @@ public class AiAgentService {
         String content = root.path("choices").get(0).path("message").path("content").asText();
         JsonNode resultNode = objectMapper.readTree(content);
 
+        List<String> reasons = new ArrayList<>();
+        if (resultNode.path("reasons").isArray()) {
+            for (JsonNode node : resultNode.path("reasons")) {
+                reasons.add(node.asText());
+            }
+        }
+
         List<String> requiredEvidence = new ArrayList<>();
         if (resultNode.path("requiredEvidence").isArray()) {
             for (JsonNode node : resultNode.path("requiredEvidence")) {
@@ -204,6 +212,7 @@ public class AiAgentService {
         return AgentPaycheckResponse.builder()
                 .caseType(caseType.name())
                 .summary(resultNode.path("summary").asText())
+                .reasons(reasons)
                 .requiredEvidence(requiredEvidence)
                 .nextActions(nextActions)
                 .messageForEmployer(messageForEmployer)
@@ -264,7 +273,7 @@ public class AiAgentService {
 
         switch (caseType) {
             case SALARY_DECREASE -> {
-                String korScript = String.format("안녕하세요 사장님, %s %s 급여 입금액(%,d원)과 명세서 금액에 %,d원의 차이가 있어 확인 부탁드립니다.",
+                String korScript = String.format("안녕하세요 사장님, %s %s 급여 입금해 주셔서 감사합니다. 통장 입금액(%,d원)과 명세서 실지급액 사이에 %,d원의 차액이 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이나 확인이 필요한 부분이 있는지 알려주시면 감사하겠습니다!",
                         company, payPeriod, paycheck.getActualAmount() != null ? paycheck.getActualAmount().longValue() : 0L, diff);
 
                 EmployerQuestionCard card = EmployerQuestionCard.builder()
@@ -276,15 +285,31 @@ public class AiAgentService {
 
                 return AgentPaycheckResponse.builder()
                         .caseType(caseType.name())
-                        .summary(String.format("%s 급여의 실입금액이 명세서 금액보다 %,d원 적게 입금되어 확인이 필요합니다.", payPeriod, diff))
-                        .requiredEvidence(List.of(String.format("%s 임금명세서", payPeriod), "급여 입금 통장 거래내역"))
-                        .nextActions(List.of("임금명세서 상세 공제 내역 확인", "추가 공제 항목(세금, 4대보험, 가불금 등) 여부 확인", "사업주 사실 확인 문의"))
+                        .summary(String.format("%s 급여 입금액(%,d원)과 임금명세서 실지급액 사이에 %,d원의 부족 차액이 감지되었습니다. 근로기준법 제43조(전액 지급의 원칙)에 따라 근로자의 사전 서면 동의 없는 공제는 제한되므로, 추가 공제 항목 여부 및 계산 착오에 대한 구체적 확인이 필요합니다.",
+                                payPeriod, paycheck.getActualAmount() != null ? paycheck.getActualAmount().longValue() : 0L, diff))
+                        .reasons(List.of(
+                                "임금명세서 미기재 추가 공제 가능성 (기숙사비, 수도광열비, 식대, 유니폼 비용 또는 4대보험 소급 정산 등 사전 미동의 공제)",
+                                "가산수당(연장·야간·휴일근로 1.5배 가산) 또는 주휴수당 산정 누락/오차",
+                                "사업장 급여 담당자의 단순 송금 입력 착오 또는 분할 이체"
+                        ))
+                        .requiredEvidence(List.of(
+                                String.format("%s 귀속월 임금명세서 사본 (지급 및 공제 세부 항목)", payPeriod),
+                                "급여 통장 입금 거래내역서 (입금 일시, 금액, 송금인 명의)",
+                                "표준근로계약서 사본 (소정근로시간, 기본급, 숙식비 공제 약정서)",
+                                "출퇴근 기록부 또는 근무일지 (연장·야간 근로시간 증빙)"
+                        ))
+                        .nextActions(List.of(
+                                "1단계: 팩트 확인 및 증빙 자료(명세서, 통장 거래내역) 캡처 확보",
+                                "2단계: 제공된 '사장님 질문 카드'를 복사하여 메신저(문자/카카오톡)로 공제 사유 정중히 서면 문의",
+                                "3단계: 계산 착오 시 차액 입금 요청 및 공제 사유가 명시된 수정 임금명세서 수령·보관",
+                                "4단계: 정당한 이유 없이 미해결 시 고용노동부(1350) 또는 관할 외국인노동자지원센터 권리구제 상담"
+                        ))
                         .messageForEmployer(korScript)
                         .employerQuestionCards(List.of(card))
                         .build();
             }
             case PAYMENT_DELAY -> {
-                String korScript = String.format("안녕하세요 사장님, %s %s 급여 입금 일정이 평소와 달라 확인차 연락드렸습니다.", company, payPeriod);
+                String korScript = String.format("안녕하세요 사장님, %s %s 급여 지급 일정과 관련하여 평소와 달라 확인차 연락드렸습니다. 혹시 이번 달 급여 입금 일정이 언제쯤 진행되는지 알려주시면 감사하겠습니다!", company, payPeriod);
                 String nativeDelayScript;
                 if ("vi".equals(lang)) {
                     nativeDelayScript = "Xin chào giám đốc, lịch thanh toán lương tháng này có chút thay đổi nên tôi xin phép hỏi thăm ạ.";
@@ -311,17 +336,28 @@ public class AiAgentService {
                         .nativeScript(nativeDelayScript)
                         .build();
 
+                String expectedDateStr = paycheck.getExpectedPaymentDate() != null ? paycheck.getExpectedPaymentDate().toString() : "정기 급여일";
+
                 return AgentPaycheckResponse.builder()
                         .caseType(caseType.name())
-                        .summary(String.format("%s 급여가 계약상 정해진 급여일보다 늦게 입금되었습니다.", payPeriod))
-                        .requiredEvidence(List.of("표준근로계약서", "급여 입금 통장 거래내역"))
-                        .nextActions(List.of("급여 지급 지연 사유 확인", "향후 정기 지급 일정 확인"))
+                        .summary(String.format("%s 급여가 계약상 정해진 정기 급여일(%s)보다 늦게 입금되었거나 지연되고 있습니다. 근로기준법 제43조 제2항(정기일 지급의 원칙)에 따라 임금은 매월 정해진 날짜에 지급되어야 합니다.", payPeriod, expectedDateStr))
+                        .reasons(List.of(
+                                "사업장 급여 정산 일정 지연 또는 금융기관 이체 마감 시간 초과",
+                                "급여일이 주말/공휴일인 경우 사전 약정된 지급일(직전 영업일 또는 익영업일) 차이",
+                                "회사 자금 사정 또는 내부 행정 결재 절차 지연"
+                        ))
+                        .requiredEvidence(List.of("표준근로계약서 사본 (임금 지급일 명시 조항)", "급여 입금 통장 거래내역서", "회사 급여 지급일 변경 공지(있는 경우)"))
+                        .nextActions(List.of(
+                                "1단계: 근로계약서 상 정기 급여일 및 주말/공휴일 지급 특약 확인",
+                                "2단계: 사업주/급여 담당자에게 지연 사유 및 지급 예정일 정중히 확인",
+                                "3단계: 반복 지연 발생 시 향후 정기 지급 일정에 대한 서면 확약 요청"
+                        ))
                         .messageForEmployer(korScript)
                         .employerQuestionCards(List.of(card))
                         .build();
             }
             case NOT_RECEIVED -> {
-                String korScript = String.format("안녕하세요 사장님, %s %s 급여 입금 내역이 확인되지 않아 확인 부탁드립니다.", company, payPeriod);
+                String korScript = String.format("안녕하세요 사장님, %s %s 급여일인데 아직 통장에 급여 입금 내역이 확인되지 않아 연락드렸습니다. 혹시 제 계좌번호에 이상이 있거나 확인이 필요한 사항이 있는지 점검 부탁드립니다!", company, payPeriod);
                 String nativeNotReceivedScript;
                 if ("vi".equals(lang)) {
                     nativeNotReceivedScript = "Xin chào giám đốc, hiện tại tôi chưa thấy tiền lương tháng này vào tài khoản, nhờ giám đốc kiểm tra giúp ạ.";
@@ -350,16 +386,25 @@ public class AiAgentService {
 
                 return AgentPaycheckResponse.builder()
                         .caseType(caseType.name())
-                        .summary(String.format("%s 급여일에 입금 내역이 확인되지 않았습니다.", payPeriod))
-                        .requiredEvidence(List.of("표준근로계약서", "급여 통장 입출금 내역"))
-                        .nextActions(List.of("통장 계좌번호 재확인", "사업장 급여 지급 일정 확인"))
+                        .summary(String.format("%s 정기 급여일이 경과하였으나 통장으로 입금된 급여 내역이 전혀 확인되지 않았습니다. 계좌번호 착오 여부, 급여 처리 누락, 또는 일시적 송금 오류인지 신속한 확인이 필요합니다.", payPeriod))
+                        .reasons(List.of(
+                                "급여 입금 통장 계좌번호 오류 또는 은행 전산 처리 지연",
+                                "사업장 급여 지급 명단 누락 또는 담당자 송금 누락",
+                                "사업장 지급일 조정 미공지 또는 일시적 자금 집행 지연"
+                        ))
+                        .requiredEvidence(List.of("표준근로계약서 사본", "최근 3개월 급여 통장 입출금 내역서", "급여 수령용 통장 사본 (계좌번호 재확인)"))
+                        .nextActions(List.of(
+                                "1단계: 회사에 등록된 급여 통장 계좌번호 및 은행명 재확인",
+                                "2단계: 사업주/담당자에게 급여 미입금 사실 알리고 입금 상태 및 예정일 확인 요청",
+                                "3단계: 지속적 미지급 시 고용노동부 무료 상담(1350)을 통한 권리 구제 절차 안내"
+                        ))
                         .messageForEmployer(korScript)
                         .employerQuestionCards(List.of(card))
                         .build();
             }
             case LARGE_DEVIATION -> {
                 long actualAmt = paycheck.getActualAmount() != null ? paycheck.getActualAmount().longValue() : 0L;
-                String korScript = String.format("안녕하세요 사장님, %s %s 급여 입금액(%,d원)에 변동 내역이 있어 확인 부탁드립니다.",
+                String korScript = String.format("안녕하세요 사장님, %s %s 급여 입금액(%,d원)에 변동 내역이 있어 확인차 연락드렸습니다. 혹시 이번 달 급여 명세서 항목 중 변동된 수당이나 공제 항목에 대해 간략히 설명해 주실 수 있는지 부탁드립니다!",
                         company, payPeriod, actualAmt);
 
                 String nativeLargeDevScript;
@@ -397,9 +442,18 @@ public class AiAgentService {
 
                 return AgentPaycheckResponse.builder()
                         .caseType(caseType.name())
-                        .summary(String.format("%s 급여 입금액에 예상과 다른 변동이 확인되었습니다.", payPeriod))
-                        .requiredEvidence(List.of(String.format("%s 임금명세서", payPeriod), "급여 입금 통장 거래내역"))
-                        .nextActions(List.of("임금명세서 상세 항목 확인", "사업주 사실 확인 문의"))
+                        .summary(String.format("%s 급여 실입금액(%,d원)이 평소 또는 계약 급여와 상당한 차이를 보이고 있습니다. 연장근로수당 정산, 상여금 지급, 또는 공제액 변동 여부에 대해 항목별 대조가 필요합니다.", payPeriod, actualAmt))
+                        .reasons(List.of(
+                                "연장·야간·휴일 근로시간 변동에 따른 시간외근로수당 증감",
+                                "분기/명절 상여금 또는 성과급 일시 지급",
+                                "연말정산 소급 공제 또는 4대보험 정산금 반영"
+                        ))
+                        .requiredEvidence(List.of(String.format("%s 귀속월 임금명세서 사본", payPeriod), "급여 입금 통장 거래내역서", "근무일지 및 연장근로 승인 내역"))
+                        .nextActions(List.of(
+                                "1단계: 임금명세서 항목별 세부 지급 및 공제 내역 대조",
+                                "2단계: 전월 대비 변동 항목(수당, 공제 등) 비교 점검",
+                                "3단계: 이상 항목에 대해 사업장 급여 담당자에게 산출 근거 서면 요청"
+                        ))
                         .messageForEmployer(korScript)
                         .employerQuestionCards(List.of(card))
                         .build();
@@ -407,9 +461,10 @@ public class AiAgentService {
             default -> {
                 return AgentPaycheckResponse.builder()
                         .caseType(caseType.name())
-                        .summary(String.format("%s 급여 내역이 정상적으로 확인되었습니다.", payPeriod))
-                        .requiredEvidence(List.of())
-                        .nextActions(List.of("급여 내역 보관", "세금 및 공제 내역 정기 확인"))
+                        .summary(String.format("%s 급여 3중 대조 결과 모든 항목(계약금액, 명세서 실지급액, 통장 실입금액)이 정상적으로 일치합니다.", payPeriod))
+                        .reasons(List.of("계약서와 임금명세서, 은행 실입금액 간 불일치 사항 없음"))
+                        .requiredEvidence(List.of("해당 귀속월 임금명세서 보관"))
+                        .nextActions(List.of("급여 명세서 파일 영구 보관 (향후 비자 연장 및 세무 정산용)", "4대보험 및 세금 공제 내역 정기 확인"))
                         .messageForEmployer("")
                         .employerQuestionCards(List.of())
                         .build();
