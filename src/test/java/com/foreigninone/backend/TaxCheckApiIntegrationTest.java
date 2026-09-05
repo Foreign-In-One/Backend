@@ -86,6 +86,23 @@ class TaxCheckApiIntegrationTest {
     }
 
     @Test
+    void analyzedTaxCheckAppearsInRecords() throws Exception {
+        long id = analyze(user.getUserId(), confirmed("30000000", "2000000"))
+                .path("taxCheckId").asLong();
+        entityManager.flush();
+        entityManager.clear();
+
+        mvc.perform(get("/api/records").param("type", "TAX_CHECK")
+                        .header("X-Demo-User-Id", user.getUserId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].recordKey").value("TAX_CHECK:" + id))
+                .andExpect(jsonPath("$.data.items[0].sourceId").value(id))
+                .andExpect(jsonPath("$.data.items[0].type").value("TAX_CHECK"))
+                .andExpect(jsonPath("$.data.counts.taxCheck").value(1));
+    }
+
+    @Test
     void missingIncomeDoesNotUsePaycheckOrOcr() throws Exception {
         Document document = document(user, DocumentType.TAX_DOCUMENT);
         JsonNode created = analyze(user.getUserId(), "{\"taxYear\":2026,\"taxDocumentId\":" + document.getDocumentId() + "}");
