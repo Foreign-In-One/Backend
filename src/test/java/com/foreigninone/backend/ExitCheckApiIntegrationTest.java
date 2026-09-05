@@ -2,6 +2,7 @@ package com.foreigninone.backend;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.foreigninone.backend.domain.exitcheck.dto.ExitCheckAnalyzeRequest;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,9 @@ class ExitCheckApiIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private EntityManager entityManager;
 
     @BeforeEach
     void setUp() {
@@ -104,6 +108,38 @@ class ExitCheckApiIntegrationTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].insuranceStatus").value("MISSING_DOCUMENT"));
+    }
+
+    @Test
+    @DisplayName("출국 정산 분석 결과가 기록 화면에 노출된다")
+    void testAnalyzedExitCheckAppearsInRecords() throws Exception {
+        ExitCheckAnalyzeRequest request = ExitCheckAnalyzeRequest.builder()
+                .expectedExitDate(LocalDate.of(2027, 3, 1))
+                .hasInsuranceRecord(true)
+                .hasOwnAccount(true)
+                .hasExitProof(true)
+                .pensionDeducted(false)
+                .hasRecentPayslip(true)
+                .build();
+
+        String response = mockMvc.perform(post("/api/exit-checks/analyze")
+                        .header("X-Demo-User-Id", 1)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long id = objectMapper.readTree(response).path("data").path("exitCheckId").asLong();
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/records").param("type", "EXIT_CHECK")
+                        .header("X-Demo-User-Id", 1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].recordKey").value("EXIT_CHECK:" + id))
+                .andExpect(jsonPath("$.data.items[0].sourceId").value(id))
+                .andExpect(jsonPath("$.data.items[0].type").value("EXIT_CHECK"))
+                .andExpect(jsonPath("$.data.counts.exitCheck").value(1));
     }
 
     @Test
