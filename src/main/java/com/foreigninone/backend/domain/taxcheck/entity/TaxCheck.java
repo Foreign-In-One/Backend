@@ -5,7 +5,9 @@ import com.foreigninone.backend.domain.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -49,11 +51,11 @@ public class TaxCheck {
     @Column(name = "tax_difference", precision = 15, scale = 2)
     private BigDecimal taxDifference;
 
-    @Convert(converter = TaxCheckJsonConverter.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "benefit_summary", columnDefinition = "JSON")
     private Map<String, Object> benefitSummary;
 
-    @Convert(converter = TaxCheckJsonConverter.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "required_documents", columnDefinition = "JSON")
     private Map<String, Object> requiredDocuments;
 
