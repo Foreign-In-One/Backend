@@ -23,6 +23,7 @@ public class PaycheckRuleEngine {
         private final BigDecimal contractAmount;
         private final BigDecimal payslipAmount;
         private final BigDecimal actualAmount;
+        private final BigDecimal requestedDifferenceAmount;
         private final LocalDate expectedPaymentDate;
         private final LocalDateTime actualPaymentDate;
         private final Paycheck previousPaycheck;
@@ -96,6 +97,47 @@ public class PaycheckRuleEngine {
         }
 
         if (diff.compareTo(BigDecimal.ZERO) == 0) {
+            // 1. 클라이언트 3중 대조에서 전달된 차액이 있는 경우 우선 반영
+            if (input.getRequestedDifferenceAmount() != null) {
+                BigDecimal reqDiff = input.getRequestedDifferenceAmount();
+                if (reqDiff.compareTo(BigDecimal.ZERO) < 0) {
+                    long absDiff = reqDiff.abs().longValue();
+                    return RuleResult.builder()
+                            .status(PaycheckStatus.EXPLANATION_REQUIRED)
+                            .caseType(PaycheckCaseType.SALARY_DECREASE)
+                            .differenceAmount(reqDiff)
+                            .analysisSummary(String.format("통장 입금액은 명세서와 일치하나, 기본급 또는 공제 내역에서 %,d원의 차이가 확인되었습니다.", absDiff))
+                            .nextAction("근로계약서 상의 계약 기본급과 임금명세서 기본급을 대조하고 사유를 확인하세요.")
+                            .build();
+                } else if (reqDiff.compareTo(BigDecimal.ZERO) > 0) {
+                    long overDiff = reqDiff.longValue();
+                    return RuleResult.builder()
+                            .status(PaycheckStatus.CONFIRMATION_REQUIRED)
+                            .caseType(PaycheckCaseType.LARGE_DEVIATION)
+                            .differenceAmount(reqDiff)
+                            .analysisSummary(String.format("계약상 기준 금액보다 %,d원 초과된 내역이 확인되었습니다.", overDiff))
+                            .nextAction("추가 수당 또는 상여금 지급 내역을 확인하세요.")
+                            .build();
+                }
+            } else if (contract != null) {
+                // requestedDifferenceAmount가 명시되지 않은 경우(단위 테스트 등):
+                // 통상적인 4대보험/세금 공제(약 25% 이내)를 벗어난 극단적인 기본급 차이(계약의 30% 초과)만 감지
+                BigDecimal contractDiff = payslip.subtract(contract);
+                if (contractDiff.compareTo(BigDecimal.ZERO) < 0) {
+                    BigDecimal threshold = contract.multiply(BigDecimal.valueOf(0.30));
+                    if (contractDiff.abs().compareTo(threshold) > 0) {
+                        long absContractDiff = contractDiff.abs().longValue();
+                        return RuleResult.builder()
+                                .status(PaycheckStatus.EXPLANATION_REQUIRED)
+                                .caseType(PaycheckCaseType.SALARY_DECREASE)
+                                .differenceAmount(contractDiff)
+                                .analysisSummary(String.format("통장 입금액은 명세서와 일치하나, 계약상 기본급보다 %,d원 적게 산정되었습니다.", absContractDiff))
+                                .nextAction("근로계약서 상의 계약 기본급과 임금명세서 기본급을 대조하고 사유를 확인하세요.")
+                                .build();
+                    }
+                }
+            }
+
             if (isPaymentDelayed) {
                 return RuleResult.builder()
                         .status(PaycheckStatus.CONFIRMATION_REQUIRED)
@@ -134,7 +176,7 @@ public class PaycheckRuleEngine {
             long overDiff = diff.longValue();
             return RuleResult.builder()
                     .status(PaycheckStatus.CONFIRMATION_REQUIRED)
-                    .caseType(PaycheckCaseType.NORMAL)
+                    .caseType(PaycheckCaseType.LARGE_DEVIATION)
                     .differenceAmount(diff)
                     .analysisSummary(String.format("통장 입금액이 임금명세서 실지급액보다 %,d원 더 많습니다.", overDiff))
                     .nextAction("추가 수당이나 정산금이 포함되었는지 확인하세요.")

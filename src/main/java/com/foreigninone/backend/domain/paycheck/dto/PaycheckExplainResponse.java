@@ -16,8 +16,11 @@ public class PaycheckExplainResponse {
 
     private Long paycheckId;
     private String caseType;
+    private String headline;
     private String summary;
+    private String documentCheckGuide;
     private List<String> reasons;
+    private List<String> requiredEvidence;
     private List<String> nextActions;
     private List<EmployerQuestionCard> employerQuestionCards;
 }

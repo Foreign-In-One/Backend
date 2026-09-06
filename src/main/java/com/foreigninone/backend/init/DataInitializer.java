@@ -91,10 +91,25 @@ public class DataInitializer implements CommandLineRunner {
                 fallbackDeleteAll();
             }
         } else {
-            // 2. MySQL 등 TRUNCATE CASCADE가 지원되지 않는 로컬 환경용 폴백
-            fallbackDeleteAll();
+            // 2. MySQL 등 로컬 환경: FOREIGN_KEY_CHECKS 해제 후 TRUNCATE하여 AUTO_INCREMENT를 1로 초기화
+            try {
+                em.createNativeQuery("SET FOREIGN_KEY_CHECKS = 0").executeUpdate();
+                em.createNativeQuery("TRUNCATE TABLE calendar_events").executeUpdate();
+                em.createNativeQuery("TRUNCATE TABLE exit_checks").executeUpdate();
+                em.createNativeQuery("TRUNCATE TABLE tax_checks").executeUpdate();
+                em.createNativeQuery("TRUNCATE TABLE paychecks").executeUpdate();
+                em.createNativeQuery("TRUNCATE TABLE bank_transactions").executeUpdate();
+                em.createNativeQuery("TRUNCATE TABLE documents").executeUpdate();
+                em.createNativeQuery("TRUNCATE TABLE users").executeUpdate();
+                em.createNativeQuery("SET FOREIGN_KEY_CHECKS = 1").executeUpdate();
+                log.info("MySQL TRUNCATE with FOREIGN_KEY_CHECKS = 0 completed.");
+            } catch (Exception e) {
+                log.warn("MySQL TRUNCATE failed (fallback to JPA delete): {}", e.getMessage());
+                fallbackDeleteAll();
+            }
         }
 
+        em.clear();
         initSeedData();
         log.info("Seed Data reset successfully.");
     }
@@ -140,7 +155,7 @@ public class DataInitializer implements CommandLineRunner {
                 .ocrStatus(OcrStatus.SUCCESS)
                 .extractedData(Map.of(
                         "companyName", "한국정밀",
-                        "baseSalary", 2300000,
+                        "baseSalary", 2400000,
                         "payday", 25,
                         "workStartDate", "2025-03-10",
                         "contractDurationMonths", 36
@@ -214,8 +229,8 @@ public class DataInitializer implements CommandLineRunner {
                 .inoutType("입금")
                 .tranType("급여")
                 .printedContent("한국정밀 8월 급여")
-                .tranAmt(BigDecimal.valueOf(2260000))
-                .afterBalanceAmt(BigDecimal.valueOf(6760000))
+                .tranAmt(BigDecimal.valueOf(2300000))
+                .afterBalanceAmt(BigDecimal.valueOf(6800000))
                 .branchName("분당점")
                 .transactionCategory("SALARY")
                 .build();

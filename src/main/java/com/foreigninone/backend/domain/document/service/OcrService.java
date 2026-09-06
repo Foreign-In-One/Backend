@@ -241,12 +241,9 @@ public class OcrService {
             }
         }
 
-        // 실지급액이 없고 지급총액만 있는 경우 또는 반대 경우 정규화
-        if (!extracted.containsKey("netPay") && extracted.containsKey("totalPayment")) {
-            extracted.put("netPay", extracted.get("totalPayment"));
-        } else if (!extracted.containsKey("totalPayment") && extracted.containsKey("netPay")) {
-            extracted.put("totalPayment", extracted.get("netPay"));
-        }
+        // netPay가 없고 totalPayment만 있어도 자동 대입하지 않음.
+        // totalPayment(지급총액, 세전)와 netPay(실지급액, 세후)는 다른 개념이므로
+        // candidateAmounts에 후보로만 포함되어 사용자가 직접 선택하도록 함.
 
         if (extracted.isEmpty() || (!extracted.containsKey("baseSalary") && !extracted.containsKey("netPay") && !extracted.containsKey("depositAmount"))) {
             Map<String, Object> fallback = generateMockExtractedDataByType(documentType);
@@ -394,39 +391,39 @@ public class OcrService {
                 data.put("baseSalary", 2300000);
                 data.put("totalPayment", 2380000);
                 data.put("overtimeAllowance", 80000);
-                data.put("deduction", 0);
-                data.put("netPay", 2380000);
+                data.put("deduction", 80000);
+                data.put("netPay", 2300000);
                 data.put("companyName", "한국정밀");
                 data.put("paymentDate", "2026-08-25");
                 data.put("candidateAmounts", List.of(
                         Map.of("label", "기본급", "amount", 2300000),
                         Map.of("label", "연장근로수당", "amount", 80000),
-                        Map.of("label", "지급총액", "amount", 2380000),
-                        Map.of("label", "실지급액(차인지급액)", "amount", 2380000),
-                        Map.of("label", "실제통장입금액", "amount", 2260000)
+                        Map.of("label", "지급총액(세전)", "amount", 2380000),
+                        Map.of("label", "공제총액", "amount", 80000),
+                        Map.of("label", "실지급액(차인지급액)", "amount", 2300000)
                 ));
             }
             case EMPLOYMENT_CONTRACT -> {
                 data.put("companyName", "한국정밀");
-                data.put("baseSalary", 2300000);
+                data.put("baseSalary", 2400000);
                 data.put("payday", 25);
                 data.put("workStartDate", "2025-03-10");
                 data.put("contractDurationMonths", 36);
                 data.put("candidateAmounts", List.of(
-                        Map.of("label", "계약 기본급(월급)", "amount", 2300000),
-                        Map.of("label", "통상시급", "amount", 11005),
+                        Map.of("label", "계약 기본급(월급)", "amount", 2400000),
+                        Map.of("label", "통상시급", "amount", 11483),
                         Map.of("label", "식대/복리후생비", "amount", 100000)
                 ));
             }
             case BANK_RECEIPT -> {
                 data.put("bankName", "하나은행");
-                data.put("depositAmount", 2260000);
-                data.put("afterBalanceAmt", 6760000);
+                data.put("depositAmount", 2300000);
+                data.put("afterBalanceAmt", 6800000);
                 data.put("depositDate", "2026-08-25");
                 data.put("sender", "한국정밀 8월 급여");
                 data.put("candidateAmounts", List.of(
-                        Map.of("label", "급여 입금액", "amount", 2260000),
-                        Map.of("label", "거래후 잔액", "amount", 6760000)
+                        Map.of("label", "급여 입금액", "amount", 2300000),
+                        Map.of("label", "거래후 잔액", "amount", 6800000)
                 ));
             }
             default -> {

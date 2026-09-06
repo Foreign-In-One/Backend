@@ -2,6 +2,7 @@ package com.foreigninone.backend;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.foreigninone.backend.domain.exitcheck.dto.ExitCheckAnalyzeRequest;
+import com.foreigninone.backend.init.DataInitializer;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -34,9 +35,13 @@ class ExitCheckApiIntegrationTest {
     @Autowired
     private EntityManager entityManager;
 
+    @Autowired
+    private DataInitializer dataInitializer;
+
     @BeforeEach
     void setUp() {
         this.mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
+        dataInitializer.resetSeedData();
     }
 
     @Test

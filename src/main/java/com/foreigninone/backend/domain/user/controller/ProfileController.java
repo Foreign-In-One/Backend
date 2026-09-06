@@ -27,7 +27,7 @@ public class ProfileController {
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 
-    @PatchMapping
+    @RequestMapping(method = {RequestMethod.PATCH, RequestMethod.PUT})
     public ResponseEntity<ApiResponse<ProfileResponse>> updateProfile(
             @RequestHeader(value = "X-User-Id", required = false) Long xUserId,
             @RequestHeader(value = "X-Demo-User-Id", required = false) Long headerUserId,
