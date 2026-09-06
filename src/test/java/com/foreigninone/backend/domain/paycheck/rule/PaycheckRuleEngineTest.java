@@ -107,4 +107,25 @@ class PaycheckRuleEngineTest {
         assertThat(result.getCaseType()).isEqualTo(PaycheckCaseType.PAYMENT_DELAY);
         assertThat(result.getAnalysisSummary()).contains("늦게 입금");
     }
+
+    @Test
+    @DisplayName("계약 기본급 삭감 감지: 계약 1.6억, 명세서 55만, 실입금 55만 -> EXPLANATION_REQUIRED, SALARY_DECREASE")
+    void testContractBasePayDecrease() {
+        PaycheckRuleEngine.RuleInput input = PaycheckRuleEngine.RuleInput.builder()
+                .user(testUser)
+                .payPeriod("2026-08")
+                .contractAmount(BigDecimal.valueOf(161651515))
+                .payslipAmount(BigDecimal.valueOf(555100))
+                .actualAmount(BigDecimal.valueOf(555100))
+                .expectedPaymentDate(LocalDate.of(2026, 8, 25))
+                .actualPaymentDate(LocalDateTime.of(2026, 8, 25, 9, 0))
+                .build();
+
+        PaycheckRuleEngine.RuleResult result = ruleEngine.evaluate(input);
+
+        assertThat(result.getStatus()).isEqualTo(PaycheckStatus.EXPLANATION_REQUIRED);
+        assertThat(result.getCaseType()).isEqualTo(PaycheckCaseType.SALARY_DECREASE);
+        assertThat(result.getDifferenceAmount()).isEqualByComparingTo(BigDecimal.valueOf(555100 - 161651515));
+        assertThat(result.getAnalysisSummary()).contains("계약상 기본급보다 161,096,415원 적게");
+    }
 }
