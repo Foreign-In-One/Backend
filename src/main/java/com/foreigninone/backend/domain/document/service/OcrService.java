@@ -391,27 +391,27 @@ public class OcrService {
                 data.put("baseSalary", 2300000);
                 data.put("totalPayment", 2380000);
                 data.put("overtimeAllowance", 80000);
-                data.put("deduction", 120000);
-                // netPay는 명확히 명세서에서 읽은 값이 있을 때만 설정 (totalPayment를 netPay로 자동 대입하지 않음)
+                data.put("deduction", 80000);
+                data.put("netPay", 2300000);
                 data.put("companyName", "한국정밀");
                 data.put("paymentDate", "2026-08-25");
                 data.put("candidateAmounts", List.of(
                         Map.of("label", "기본급", "amount", 2300000),
                         Map.of("label", "연장근로수당", "amount", 80000),
                         Map.of("label", "지급총액(세전)", "amount", 2380000),
-                        Map.of("label", "공제총액", "amount", 120000),
-                        Map.of("label", "실지급액(차인지급액)", "amount", 2260000)
+                        Map.of("label", "공제총액", "amount", 80000),
+                        Map.of("label", "실지급액(차인지급액)", "amount", 2300000)
                 ));
             }
             case EMPLOYMENT_CONTRACT -> {
                 data.put("companyName", "한국정밀");
-                data.put("baseSalary", 2300000);
+                data.put("baseSalary", 2400000);
                 data.put("payday", 25);
                 data.put("workStartDate", "2025-03-10");
                 data.put("contractDurationMonths", 36);
                 data.put("candidateAmounts", List.of(
-                        Map.of("label", "계약 기본급(월급)", "amount", 2300000),
-                        Map.of("label", "통상시급", "amount", 11005),
+                        Map.of("label", "계약 기본급(월급)", "amount", 2400000),
+                        Map.of("label", "통상시급", "amount", 11483),
                         Map.of("label", "식대/복리후생비", "amount", 100000)
                 ));
             }

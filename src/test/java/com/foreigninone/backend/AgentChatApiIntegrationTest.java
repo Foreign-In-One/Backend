@@ -28,9 +28,13 @@ class AgentChatApiIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private com.foreigninone.backend.init.DataInitializer dataInitializer;
+
     @BeforeEach
     void setUp() {
         this.mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
+        dataInitializer.resetSeedData();
     }
 
     @Test

@@ -34,9 +34,13 @@ class PaycheckApiIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private com.foreigninone.backend.init.DataInitializer dataInitializer;
+
     @BeforeEach
     void setUp() {
         this.mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
+        dataInitializer.resetSeedData();
     }
 
     @Test
@@ -144,7 +148,7 @@ class PaycheckApiIntegrationTest {
                 .andExpect(jsonPath("$.data.paycheckId").isNumber())
                 .andExpect(jsonPath("$.data.payPeriod").value("2026-08"))
                 .andExpect(jsonPath("$.data.status").value("EXPLANATION_REQUIRED"))
-                .andExpect(jsonPath("$.data.differenceAmount").value(-120000));
+                .andExpect(jsonPath("$.data.differenceAmount").value(-80000));
 
         // 캘린더 이벤트에 PAYCHECK 및 PAYDAY가 투영되었는지 확인
         mockMvc.perform(get("/api/calendar/events")
