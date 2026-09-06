@@ -1,13 +1,13 @@
 package com.foreigninone.backend.domain.exitcheck.entity;
 
-import com.foreigninone.backend.common.util.JsonListMapConverter;
-import com.foreigninone.backend.common.util.JsonStringListConverter;
 import com.foreigninone.backend.domain.document.entity.Document;
 import com.foreigninone.backend.domain.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -54,11 +54,11 @@ public class ExitCheck {
     @Column(name = "retirement_status", length = 30)
     private ExitCheckStatus retirementStatus;
 
-    @Convert(converter = JsonStringListConverter.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "missing_documents", columnDefinition = "JSON")
     private List<String> missingDocuments;
 
-    @Convert(converter = JsonListMapConverter.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "checklist", columnDefinition = "JSON")
     private List<Map<String, Object>> checklist;
 
