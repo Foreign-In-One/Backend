@@ -13,7 +13,9 @@ import java.util.List;
 @AllArgsConstructor
 public class AgentPaycheckResponse {
     private String caseType;
+    private String headline;
     private String summary;
+    private String documentCheckGuide;
     private List<String> reasons;
     private List<String> requiredEvidence;
     private List<String> nextActions;
