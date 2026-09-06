@@ -20,6 +20,7 @@ public class PaycheckExplainResponse {
     private String summary;
     private String documentCheckGuide;
     private List<String> reasons;
+    private List<String> requiredEvidence;
     private List<String> nextActions;
     private List<EmployerQuestionCard> employerQuestionCards;
 }

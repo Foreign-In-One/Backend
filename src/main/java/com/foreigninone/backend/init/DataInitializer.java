@@ -109,6 +109,7 @@ public class DataInitializer implements CommandLineRunner {
             }
         }
 
+        em.clear();
         initSeedData();
         log.info("Seed Data reset successfully.");
     }
@@ -154,7 +155,7 @@ public class DataInitializer implements CommandLineRunner {
                 .ocrStatus(OcrStatus.SUCCESS)
                 .extractedData(Map.of(
                         "companyName", "한국정밀",
-                        "baseSalary", 2300000,
+                        "baseSalary", 2400000,
                         "payday", 25,
                         "workStartDate", "2025-03-10",
                         "contractDurationMonths", 36
