@@ -232,7 +232,8 @@ public class PaycheckService {
                 .headline(agentResponse.getHeadline())
                 .summary(agentResponse.getSummary())
                 .documentCheckGuide(agentResponse.getDocumentCheckGuide())
-                .reasons(agentResponse.getRequiredEvidence())
+                .reasons(agentResponse.getReasons())
+                .requiredEvidence(agentResponse.getRequiredEvidence())
                 .nextActions(agentResponse.getNextActions())
                 .employerQuestionCards(agentResponse.getEmployerQuestionCards())
                 .build();
