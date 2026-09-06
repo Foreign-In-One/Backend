@@ -417,13 +417,13 @@ public class OcrService {
             }
             case BANK_RECEIPT -> {
                 data.put("bankName", "하나은행");
-                data.put("depositAmount", 2260000);
-                data.put("afterBalanceAmt", 6760000);
+                data.put("depositAmount", 2300000);
+                data.put("afterBalanceAmt", 6800000);
                 data.put("depositDate", "2026-08-25");
                 data.put("sender", "한국정밀 8월 급여");
                 data.put("candidateAmounts", List.of(
-                        Map.of("label", "급여 입금액", "amount", 2260000),
-                        Map.of("label", "거래후 잔액", "amount", 6760000)
+                        Map.of("label", "급여 입금액", "amount", 2300000),
+                        Map.of("label", "거래후 잔액", "amount", 6800000)
                 ));
             }
             default -> {
