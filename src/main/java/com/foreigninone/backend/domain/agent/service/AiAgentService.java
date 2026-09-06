@@ -191,9 +191,13 @@ public class AiAgentService {
                                         "1. '임금체불', '불법공제', '위반' 같은 단정적인 법적 용어를 절대 사용하지 마세요. 대신 '설명이 필요한 차이', '추가 확인 필요' 표현을 사용하세요.\n" +
                                         "2. [환각 방지] 제시된 차액(" + String.format("%,d", diff) + "원)과 명시된 급여 금액만을 사용하며, 임의로 다른 금액이나 없는 숫자를 추론/계산하여 지어내지 마세요.\n" +
                                         "3. [언어 분기] koreanScript는 한국인 사업주가 읽을 공손하고 격식 있는 존댓말로 작성하고, nativeScript는 사용자가 요청한 언어/국적(" + nationality + ", " + effectiveLocale + ")에 맞추어 해당 모국어로 정확히 번역하여 작성하세요.\n" +
-                                        "4. 반드시 아래 JSON 형식으로만 응답하세요.\n" +
+                                        "4. [중복 방지 및 구체적 진단] headline은 한 줄 요약 제목(예: '2026-08 실지급액 40,000원 부족 차액 감지'), summary는 사실 관계와 배경을 친절하게 풀어서 설명하는 상세 본문으로 작성하여, headline과 summary 문장이 서로 겹치거나 단순히 문장을 복사하지 않도록 하세요.\n" +
+                                        "5. [동적 문서 대조 가이드] documentCheckGuide 항목에는 사용자가 지금 바로 대조하고 확인해야 할 구체적인 문서(예: '임금명세서의 공제 내역(4대보험, 식대, 숙소비 등)과 통장 거래내역서를 대조하여...', '근로계약서 제4조(기본급)와 임금명세서 기본급 항목을 대조하여...')와 확인 포인트를 상황에 맞추어 매우 구체적으로 작성하세요.\n" +
+                                        "6. 반드시 아래 JSON 형식으로만 응답하세요.\n" +
                                         "{\n" +
-                                        "  \"summary\": \"...\",\n" +
+                                        "  \"headline\": \"핵심 한 줄 요약 헤드라인\",\n" +
+                                        "  \"summary\": \"상세 분석 및 상황 설명\",\n" +
+                                        "  \"documentCheckGuide\": \"확인해야 할 구체적 문서 및 대조 포인트 안내\",\n" +
                                         "  \"reasons\": [\"추정 원인 1\", \"추정 원인 2\"],\n" +
                                         "  \"requiredEvidence\": [\"...\"],\n" +
                                         "  \"nextActions\": [\"...\"],\n" +
@@ -243,6 +247,20 @@ public class AiAgentService {
         String content = root.path("choices").get(0).path("message").path("content").asText();
         JsonNode resultNode = objectMapper.readTree(content);
 
+        String headline = resultNode.path("headline").asText(null);
+        String summary = resultNode.path("summary").asText(null);
+        String documentCheckGuide = resultNode.path("documentCheckGuide").asText(null);
+
+        if (headline == null || headline.isBlank()) {
+            headline = String.format("%s 급여 분석 결과", paycheck.getPayPeriod());
+        }
+        if (summary == null || summary.isBlank()) {
+            summary = "급여 분석이 완료되었습니다.";
+        }
+        if (documentCheckGuide == null || documentCheckGuide.isBlank()) {
+            documentCheckGuide = "임금명세서의 세부 지급 및 공제 항목과 통장 거래내역서를 대조해보세요.";
+        }
+
         List<String> reasons = new ArrayList<>();
         if (resultNode.path("reasons").isArray()) {
             for (JsonNode node : resultNode.path("reasons")) {
@@ -289,7 +307,9 @@ public class AiAgentService {
 
         return AgentPaycheckResponse.builder()
                 .caseType(caseType.name())
-                .summary(resultNode.path("summary").asText())
+                .headline(headline)
+                .summary(summary)
+                .documentCheckGuide(documentCheckGuide)
                 .reasons(reasons)
                 .requiredEvidence(requiredEvidence)
                 .nextActions(nextActions)
@@ -404,18 +424,27 @@ public class AiAgentService {
                         .nativeScript(nativeDecreaseScript)
                         .build();
 
+                String headlineText;
                 String summaryText;
-                if (!factDetail.isBlank()) {
-                    summaryText = String.format("%s 급여 분석 결과 %,d원의 부족 차액이 감지되었습니다. (%s) 근로기준법 제43조(전액 지급의 원칙)에 따라 근로자의 사전 서면 동의 없는 기본급 삭감 또는 공제는 제한되므로, 세부 산정 내역에 대한 구체적 확인이 필요합니다.",
-                            payPeriod, diff, factDetail);
+                String docGuideText;
+
+                if (!factDetail.isBlank() && factDetail.contains("기본급")) {
+                    headlineText = String.format("%s 기본급 %,d원 삭감 차액 확인 필요", payPeriod, diff);
+                    summaryText = String.format("%s 급여 분석 결과, 근로계약서 기본급 대비 임금명세서 기본급에서 %,d원의 차액이 확인되었습니다. 근로기준법 제43조(전액 지급의 원칙)에 따라 근로자의 사전 서면 동의 없는 기본급 삭감은 제한되므로, 산정 기준 변경 여부에 대한 구체적 확인이 필요합니다.",
+                            payPeriod, diff);
+                    docGuideText = "근로계약서 제4조(임금 구성)의 기본급 명시액과 임금명세서의 기본급 항목을 대조해보세요. 계약 체결 시 약정한 금액보다 적게 책정되었다면, 산정 기준 변경에 대한 사전 동의서가 존재하는지 사업장에 확인해야 합니다.";
                 } else {
+                    headlineText = String.format("%s 통장 실입금액 %,d원 부족 차액 감지", payPeriod, diff);
                     summaryText = String.format("%s 급여 입금액(%,d원)과 임금명세서 실지급액 사이에 %,d원의 부족 차액이 감지되었습니다. 근로기준법 제43조(전액 지급의 원칙)에 따라 근로자의 사전 서면 동의 없는 공제는 제한되므로, 추가 공제 항목 여부 및 계산 착오에 대한 구체적 확인이 필요합니다.",
                             payPeriod, paycheck.getActualAmount() != null ? paycheck.getActualAmount().longValue() : 0L, diff);
+                    docGuideText = String.format("임금명세서의 '공제 내역(4대보험 소급 정산, 숙소비, 식대 등)'과 실제 통장 입금 거래내역서를 대조해보세요. 명세서에 기재되지 않은 %,d원의 별도 공제나 송금 착오가 있었는지 급여 담당자에게 확인해야 합니다.", diff);
                 }
 
                 return AgentPaycheckResponse.builder()
                         .caseType(caseType.name())
+                        .headline(headlineText)
                         .summary(summaryText)
+                        .documentCheckGuide(docGuideText)
                         .reasons(List.of(
                                 "임금명세서 미기재 추가 공제 가능성 (기숙사비, 수도광열비, 식대, 유니폼 비용 또는 4대보험 소급 정산 등 사전 미동의 공제)",
                                 "가산수당(연장·야간·휴일근로 1.5배 가산) 또는 주휴수당 산정 누락/오차",
@@ -469,7 +498,9 @@ public class AiAgentService {
 
                 return AgentPaycheckResponse.builder()
                         .caseType(caseType.name())
+                        .headline(String.format("%s 급여 입금 지연 확인 필요", payPeriod))
                         .summary(String.format("%s 급여가 계약상 정해진 정기 급여일(%s)보다 늦게 입금되었거나 지연되고 있습니다. 근로기준법 제43조 제2항(정기일 지급의 원칙)에 따라 임금은 매월 정해진 날짜에 지급되어야 합니다.", payPeriod, expectedDateStr))
+                        .documentCheckGuide("근로계약서에 명시된 '임금 지급일' 조항과 통장 거래내역서의 실제 입금 일시를 대조해보세요. 지급일이 주말이나 공휴일이어서 은행 영업일로 순연된 것인지 사업장에 확인해보세요.")
                         .reasons(List.of(
                                 "사업장 급여 정산 일정 지연 또는 금융기관 이체 마감 시간 초과",
                                 "급여일이 주말/공휴일인 경우 사전 약정된 지급일(직전 영업일 또는 익영업일) 차이",
@@ -515,7 +546,9 @@ public class AiAgentService {
 
                 return AgentPaycheckResponse.builder()
                         .caseType(caseType.name())
+                        .headline(String.format("%s 급여 미입금 확인 필요", payPeriod))
                         .summary(String.format("%s 정기 급여일이 경과하였으나 통장으로 입금된 급여 내역이 전혀 확인되지 않았습니다. 계좌번호 착오 여부, 급여 처리 누락, 또는 일시적 송금 오류인지 신속한 확인이 필요합니다.", payPeriod))
+                        .documentCheckGuide("회사에 등록된 본인의 급여 통장 사본(은행명 및 계좌번호)을 재확인하고, 최근 3개월 통장 입출금 내역서를 출력하여 사업장 급여 담당자에게 이체 여부를 문의하세요.")
                         .reasons(List.of(
                                 "급여 입금 통장 계좌번호 오류 또는 은행 전산 처리 지연",
                                 "사업장 급여 지급 명단 누락 또는 담당자 송금 누락",
@@ -571,7 +604,9 @@ public class AiAgentService {
 
                 return AgentPaycheckResponse.builder()
                         .caseType(caseType.name())
+                        .headline(String.format("%s 급여 변동 내역 확인", payPeriod))
                         .summary(String.format("%s 급여 실입금액(%,d원)이 평소 또는 계약 급여와 상당한 차이를 보이고 있습니다. 연장근로수당 정산, 상여금 지급, 또는 공제액 변동 여부에 대해 항목별 대조가 필요합니다.", payPeriod, actualAmt))
+                        .documentCheckGuide("임금명세서의 '연장·야간·휴일 근로수당' 및 '상여금' 항목과 본인의 출퇴근 기록부(근무일지)를 대조해보세요. 특별 수당이나 정산금이 정상 반영된 것인지 확인이 필요합니다.")
                         .reasons(List.of(
                                 "연장·야간·휴일 근로시간 변동에 따른 시간외근로수당 증감",
                                 "분기/명절 상여금 또는 성과급 일시 지급",
@@ -590,7 +625,9 @@ public class AiAgentService {
             default -> {
                 return AgentPaycheckResponse.builder()
                         .caseType(caseType.name())
+                        .headline(String.format("%s 급여 3중 대조 일치 (정상)", payPeriod))
                         .summary(String.format("%s 급여 3중 대조 결과 모든 항목(계약금액, 명세서 실지급액, 통장 실입금액)이 정상적으로 일치합니다.", payPeriod))
+                        .documentCheckGuide("교부받은 임금명세서와 은행 입금 내역은 향후 퇴직금 산정 및 비자 연장 시 중요한 증빙이 되므로 안전하게 보관하세요.")
                         .reasons(List.of("계약서와 임금명세서, 은행 실입금액 간 불일치 사항 없음"))
                         .requiredEvidence(List.of("해당 귀속월 임금명세서 보관"))
                         .nextActions(List.of("급여 명세서 파일 영구 보관 (향후 비자 연장 및 세무 정산용)", "4대보험 및 세금 공제 내역 정기 확인"))
