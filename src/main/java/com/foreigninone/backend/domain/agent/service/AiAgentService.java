@@ -15,6 +15,8 @@ import com.foreigninone.backend.domain.paycheck.entity.PaycheckCaseType;
 import com.foreigninone.backend.domain.paycheck.repository.PaycheckRepository;
 import com.foreigninone.backend.domain.user.entity.User;
 import com.foreigninone.backend.domain.user.repository.UserRepository;
+import lombok.Builder;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -48,11 +50,17 @@ public class AiAgentService {
 
     @Transactional(readOnly = true)
     public AgentPaycheckResponse analyzePaycheckCase(Long paycheckId, PaycheckCaseType inputCaseType, String requestLocale, String requestWorkplace) {
+        return analyzePaycheckCase(paycheckId, inputCaseType, requestLocale, requestWorkplace, null);
+    }
+
+    @Transactional(readOnly = true)
+    public AgentPaycheckResponse analyzePaycheckCase(Long paycheckId, PaycheckCaseType inputCaseType, String requestLocale, String requestWorkplace, Object finding) {
         Paycheck paycheck = paycheckRepository.findById(paycheckId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYCHECK_NOT_FOUND));
 
         User user = paycheck.getUser();
-        PaycheckCaseType caseType = inputCaseType != null ? inputCaseType : determineCaseType(paycheck);
+        FindingInfo findingInfo = extractFindingInfo(finding);
+        PaycheckCaseType caseType = inputCaseType != null ? inputCaseType : determineCaseType(paycheck, findingInfo);
 
         String effectiveLocale = (requestLocale != null && !requestLocale.isBlank())
                 ? requestLocale.trim().toLowerCase()
@@ -70,7 +78,7 @@ public class AiAgentService {
             try {
                 log.info("Calling OpenAI API for paycheckId: {}, caseType: {}, locale: {}, workplace: {}",
                         paycheckId, caseType, effectiveLocale, effectiveWorkplace);
-                return callOpenAi(paycheck, user, caseType, effectiveLocale, effectiveWorkplace);
+                return callOpenAi(paycheck, user, caseType, effectiveLocale, effectiveWorkplace, findingInfo);
             } catch (Exception e) {
                 log.warn("OpenAI API call failed or timed out, falling back to mock AI agent response: {}", e.getMessage());
             }
@@ -78,31 +86,101 @@ public class AiAgentService {
             log.info("OpenAI API key not configured, using mock AI agent for paycheckId: {}", paycheckId);
         }
 
-        return generateMockAgentResponse(paycheck, user, caseType, effectiveLocale, effectiveWorkplace);
+        return generateMockAgentResponse(paycheck, user, caseType, effectiveLocale, effectiveWorkplace, findingInfo);
     }
 
-    private PaycheckCaseType determineCaseType(Paycheck paycheck) {
+    @Getter
+    @Builder
+    private static class FindingInfo {
+        private final String id;
+        private final String title;
+        private final String fact;
+        private final Long difference;
+        private final String status;
+    }
+
+    private FindingInfo extractFindingInfo(Object finding) {
+        if (finding == null) return null;
+        try {
+            JsonNode node = (finding instanceof JsonNode)
+                    ? (JsonNode) finding
+                    : objectMapper.valueToTree(finding);
+            String id = node.has("id") ? node.path("id").asText(null) : null;
+            String title = node.has("title") ? node.path("title").asText(null) : null;
+            String fact = node.has("fact") ? node.path("fact").asText(null) : null;
+            String status = node.has("status") ? node.path("status").asText(null) : null;
+            Long diff = null;
+            if (node.has("difference") && !node.path("difference").isNull()) {
+                diff = Math.abs(node.path("difference").asLong());
+            }
+            return FindingInfo.builder()
+                    .id(id)
+                    .title(title)
+                    .fact(fact)
+                    .difference(diff)
+                    .status(status)
+                    .build();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private PaycheckCaseType determineCaseType(Paycheck paycheck, FindingInfo findingInfo) {
         if (paycheck.getStatus() == com.foreigninone.backend.domain.paycheck.entity.PaycheckStatus.NOT_RECEIVED) {
             return PaycheckCaseType.NOT_RECEIVED;
         }
-        if (paycheck.getExpectedPaymentDate() != null && paycheck.getPaymentDate() != null
-                && paycheck.getPaymentDate().toLocalDate().isAfter(paycheck.getExpectedPaymentDate())) {
-            return PaycheckCaseType.PAYMENT_DELAY;
+        if (paycheck.getStatus() == com.foreigninone.backend.domain.paycheck.entity.PaycheckStatus.INSUFFICIENT_DATA) {
+            return PaycheckCaseType.UNKNOWN;
         }
+
+        // 1. 차액이 존재하는 경우 (금액 이상징후 최우선 판정)
         if (paycheck.getDifferenceAmount() != null && paycheck.getDifferenceAmount().compareTo(BigDecimal.ZERO) < 0) {
             return PaycheckCaseType.SALARY_DECREASE;
         }
         if (paycheck.getDifferenceAmount() != null && paycheck.getDifferenceAmount().compareTo(BigDecimal.ZERO) > 0) {
             return PaycheckCaseType.LARGE_DEVIATION;
         }
+
+        // 2. findingInfo 기반 이상징후 세부 매핑
+        if (findingInfo != null && findingInfo.getId() != null) {
+            String fid = findingInfo.getId();
+            if ("base".equals(fid) || "net".equals(fid) || "contract-deposit".equals(fid)) {
+                return PaycheckCaseType.SALARY_DECREASE;
+            }
+            if ("deduction".equals(fid)) {
+                return PaycheckCaseType.LARGE_DEVIATION;
+            }
+            if ("paydate".equals(fid)) {
+                return PaycheckCaseType.PAYMENT_DELAY;
+            }
+        }
+
+        // 3. 금액 차이가 없을 때, 입금일 지연 여부 확인
+        if (paycheck.getExpectedPaymentDate() != null && paycheck.getPaymentDate() != null
+                && paycheck.getPaymentDate().toLocalDate().isAfter(paycheck.getExpectedPaymentDate())) {
+            return PaycheckCaseType.PAYMENT_DELAY;
+        }
+
+        // 4. 상태 기반 fallback
+        if (paycheck.getStatus() == com.foreigninone.backend.domain.paycheck.entity.PaycheckStatus.EXPLANATION_REQUIRED) {
+            return PaycheckCaseType.SALARY_DECREASE;
+        }
+        if (paycheck.getStatus() == com.foreigninone.backend.domain.paycheck.entity.PaycheckStatus.CONFIRMATION_REQUIRED) {
+            return PaycheckCaseType.LARGE_DEVIATION;
+        }
+
         return PaycheckCaseType.NORMAL;
     }
 
-    private AgentPaycheckResponse callOpenAi(Paycheck paycheck, User user, PaycheckCaseType caseType, String effectiveLocale, String effectiveWorkplace) throws Exception {
-        String prompt = buildPrompt(paycheck, user, caseType, effectiveLocale, effectiveWorkplace);
+    private PaycheckCaseType determineCaseType(Paycheck paycheck) {
+        return determineCaseType(paycheck, null);
+    }
+
+    private AgentPaycheckResponse callOpenAi(Paycheck paycheck, User user, PaycheckCaseType caseType, String effectiveLocale, String effectiveWorkplace, FindingInfo findingInfo) throws Exception {
+        String prompt = buildPrompt(paycheck, user, caseType, effectiveLocale, effectiveWorkplace, findingInfo);
         String nationality = (user != null && user.getNationality() != null) ? user.getNationality() : "외국인";
 
-        long diff = paycheck.getDifferenceAmount() != null ? paycheck.getDifferenceAmount().abs().longValue() : 0L;
+        long diff = calculateEffectiveDiff(paycheck, findingInfo);
 
         Map<String, Object> requestBody = Map.of(
                 "model", openAiProperties.getModel(),
@@ -220,14 +298,48 @@ public class AiAgentService {
                 .build();
     }
 
-    private String buildPrompt(Paycheck paycheck, User user, PaycheckCaseType caseType, String effectiveLocale, String effectiveWorkplace) {
+    private long calculateEffectiveDiff(Paycheck paycheck, FindingInfo findingInfo) {
+        if (paycheck.getDifferenceAmount() != null && paycheck.getDifferenceAmount().compareTo(BigDecimal.ZERO) != 0) {
+            return paycheck.getDifferenceAmount().abs().longValue();
+        }
+        if (findingInfo != null && findingInfo.getId() != null) {
+            String fid = findingInfo.getId();
+            if ("base".equals(fid) || "net".equals(fid) || "deduction".equals(fid) || "contract-deposit".equals(fid)) {
+                if (findingInfo.getDifference() != null && findingInfo.getDifference() > 0) {
+                    return findingInfo.getDifference();
+                }
+            }
+        }
+        return 0L;
+    }
+
+    private String buildPrompt(Paycheck paycheck, User user, PaycheckCaseType caseType, String effectiveLocale, String effectiveWorkplace, FindingInfo findingInfo) {
         String userName = (user != null && user.getName() != null) ? user.getName() : "근로자";
         String nationality = (user != null && user.getNationality() != null) ? user.getNationality() : "외국인";
+        long diff = calculateEffectiveDiff(paycheck, findingInfo);
+        String findingDetail = (findingInfo != null && findingInfo.getFact() != null)
+                ? "\n- 핵심 불일치 팩트: " + findingInfo.getFact()
+                : "";
+
+        String caseInstruction;
+        if (caseType == PaycheckCaseType.NORMAL) {
+            caseInstruction = "[정상 지급 안내 지침]\n" +
+                    "- 계약상 기본급과 명세서 기본급이 일치하고, 명세서 실지급액과 통장 입금액이 완벽히 일치하여 부족 차액이 없습니다 (차액: 0원).\n" +
+                    "- 계약상 급여와 명세서 실지급액 간의 차이는 근로기준법 및 4대보험/소득세 관련 정상적인 공제액(세금 등)이며, 임금 차액이나 삭감이 아닙니다.\n" +
+                    "- summary에는 급여가 정상적으로 전액 입금되었음을 명확히 안내하세요.\n" +
+                    "- messageForEmployer 및 employerQuestionCards에는 사장님께 급여 입금에 대해 정중히 감사 인사를 전하는 내용으로 작성하세요.\n";
+        } else {
+            caseInstruction = String.format(
+                    "[이상징후 안내 지침]\n" +
+                    "- 차액 %,d원이 감지되었습니다. 원인 추정과 함께 사장님께 정중하게 확인을 요청할 수 있는 질문 카드를 작성하세요.\n",
+                    diff
+            );
+        }
 
         return String.format(
                 "사용자 정보:\n- 이름: %s\n- 국적: %s\n- 사업장: %s\n- 요청 언어: %s\n\n" +
-                        "급여 분석 정보:\n- 급여월: %s\n- 계약상 급여: %s원\n- 명세서 실지급액: %s원\n- 실제 입금액: %s원\n- 차액: %s원\n- 판정 케이스: %s\n" +
-                        "명세서 등록 여부: %s\n\n위 사실을 바탕으로 사용자에게 친절하고 객관적인 설명, 필요한 서류, 권장 행동, 그리고 사장님께 정중하게 문의할 수 있는 한국어 및 모국어(%s) 질문 카드를 작성해주세요.",
+                        "급여 분석 정보:\n- 급여월: %s\n- 계약상 급여: %s원\n- 명세서 실지급액: %s원\n- 실제 입금액: %s원\n- 차액: %,d원\n- 판정 케이스: %s%s\n" +
+                        "명세서 등록 여부: %s\n\n%s\n위 사실을 바탕으로 사용자에게 친절하고 객관적인 설명, 필요한 서류, 권장 행동, 그리고 사장님께 정중하게 문의할 수 있는 한국어 및 모국어(%s) 질문 카드를 작성해주세요.",
                 userName,
                 nationality,
                 effectiveWorkplace,
@@ -236,16 +348,18 @@ public class AiAgentService {
                 paycheck.getContractAmount() != null ? paycheck.getContractAmount().toPlainString() : "미등록",
                 paycheck.getPayslipAmount() != null ? paycheck.getPayslipAmount().toPlainString() : "미등록",
                 paycheck.getActualAmount() != null ? paycheck.getActualAmount().toPlainString() : "0",
-                paycheck.getDifferenceAmount() != null ? paycheck.getDifferenceAmount().toPlainString() : "0",
+                diff,
                 caseType.name(),
+                findingDetail,
                 paycheck.getPayslipDocument() != null ? "등록됨" : "미등록",
+                caseInstruction,
                 effectiveLocale
         );
     }
 
-    private AgentPaycheckResponse generateMockAgentResponse(Paycheck paycheck, User user, PaycheckCaseType caseType, String effectiveLocale, String effectiveWorkplace) {
+    private AgentPaycheckResponse generateMockAgentResponse(Paycheck paycheck, User user, PaycheckCaseType caseType, String effectiveLocale, String effectiveWorkplace, FindingInfo findingInfo) {
         String company = effectiveWorkplace;
-        long diff = paycheck.getDifferenceAmount() != null ? paycheck.getDifferenceAmount().abs().longValue() : 0L;
+        long diff = calculateEffectiveDiff(paycheck, findingInfo);
         String payPeriod = paycheck.getPayPeriod();
         String lang = effectiveLocale;
         String nationality = (user != null && user.getNationality() != null) ? user.getNationality() : "";
@@ -273,8 +387,15 @@ public class AiAgentService {
 
         switch (caseType) {
             case SALARY_DECREASE -> {
-                String korScript = String.format("안녕하세요 사장님, %s %s 급여 입금해 주셔서 감사합니다. 통장 입금액(%,d원)과 명세서 실지급액 사이에 %,d원의 차액이 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이나 확인이 필요한 부분이 있는지 알려주시면 감사하겠습니다!",
-                        company, payPeriod, paycheck.getActualAmount() != null ? paycheck.getActualAmount().longValue() : 0L, diff);
+                String factDetail = (findingInfo != null && findingInfo.getFact() != null) ? findingInfo.getFact() : "";
+                String korScript;
+                if (!factDetail.isBlank() && factDetail.contains("기본급")) {
+                    korScript = String.format("안녕하세요 사장님, %s %s 급여 입금해 주셔서 감사합니다. 근로계약서상 기본급과 임금명세서 기본급 사이에 %,d원의 차액이 확인되어 연락드렸습니다. 혹시 기본급 산정 기준에 변동이 있었는지 확인 부탁드립니다!",
+                            company, payPeriod, diff);
+                } else {
+                    korScript = String.format("안녕하세요 사장님, %s %s 급여 입금해 주셔서 감사합니다. 통장 입금액(%,d원)과 명세서 실지급액 사이에 %,d원의 차액이 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이나 확인이 필요한 부분이 있는지 알려주시면 감사하겠습니다!",
+                            company, payPeriod, paycheck.getActualAmount() != null ? paycheck.getActualAmount().longValue() : 0L, diff);
+                }
 
                 EmployerQuestionCard card = EmployerQuestionCard.builder()
                         .language(lang)
@@ -283,10 +404,18 @@ public class AiAgentService {
                         .nativeScript(nativeDecreaseScript)
                         .build();
 
+                String summaryText;
+                if (!factDetail.isBlank()) {
+                    summaryText = String.format("%s 급여 분석 결과 %,d원의 부족 차액이 감지되었습니다. (%s) 근로기준법 제43조(전액 지급의 원칙)에 따라 근로자의 사전 서면 동의 없는 기본급 삭감 또는 공제는 제한되므로, 세부 산정 내역에 대한 구체적 확인이 필요합니다.",
+                            payPeriod, diff, factDetail);
+                } else {
+                    summaryText = String.format("%s 급여 입금액(%,d원)과 임금명세서 실지급액 사이에 %,d원의 부족 차액이 감지되었습니다. 근로기준법 제43조(전액 지급의 원칙)에 따라 근로자의 사전 서면 동의 없는 공제는 제한되므로, 추가 공제 항목 여부 및 계산 착오에 대한 구체적 확인이 필요합니다.",
+                            payPeriod, paycheck.getActualAmount() != null ? paycheck.getActualAmount().longValue() : 0L, diff);
+                }
+
                 return AgentPaycheckResponse.builder()
                         .caseType(caseType.name())
-                        .summary(String.format("%s 급여 입금액(%,d원)과 임금명세서 실지급액 사이에 %,d원의 부족 차액이 감지되었습니다. 근로기준법 제43조(전액 지급의 원칙)에 따라 근로자의 사전 서면 동의 없는 공제는 제한되므로, 추가 공제 항목 여부 및 계산 착오에 대한 구체적 확인이 필요합니다.",
-                                payPeriod, paycheck.getActualAmount() != null ? paycheck.getActualAmount().longValue() : 0L, diff))
+                        .summary(summaryText)
                         .reasons(List.of(
                                 "임금명세서 미기재 추가 공제 가능성 (기숙사비, 수도광열비, 식대, 유니폼 비용 또는 4대보험 소급 정산 등 사전 미동의 공제)",
                                 "가산수당(연장·야간·휴일근로 1.5배 가산) 또는 주휴수당 산정 누락/오차",

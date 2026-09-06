@@ -153,6 +153,7 @@ public class PaycheckService {
                 .contractAmount(contractAmount)
                 .payslipAmount(payslipAmount)
                 .actualAmount(actualAmount)
+                .requestedDifferenceAmount(request.getDifferenceAmount())
                 .expectedPaymentDate(expectedPaymentDate)
                 .actualPaymentDate(actualPaymentDate)
                 .previousPaycheck(previousPaycheck)
@@ -171,6 +172,11 @@ public class PaycheckService {
                         .status(ruleResult.getStatus())
                         .build());
 
+        PaycheckStatus effectiveStatus = ruleResult.getStatus();
+        if (differenceAmount != null && differenceAmount.compareTo(BigDecimal.ZERO) != 0 && effectiveStatus == PaycheckStatus.NORMAL) {
+            effectiveStatus = PaycheckStatus.EXPLANATION_REQUIRED;
+        }
+
         paycheck.updateAnalysisResult(
                 contractAmount,
                 payslipAmount,
@@ -178,7 +184,7 @@ public class PaycheckService {
                 differenceAmount,
                 expectedPaymentDate,
                 actualPaymentDate,
-                ruleResult.getStatus(),
+                effectiveStatus,
                 ruleResult.getAnalysisSummary(),
                 ruleResult.getNextAction(),
                 transaction,
@@ -216,8 +222,9 @@ public class PaycheckService {
 
         String locale = request != null ? request.getLocale() : null;
         String workplace = request != null ? request.getWorkplace() : null;
+        Object finding = request != null ? request.getFinding() : null;
 
-        AgentPaycheckResponse agentResponse = aiAgentService.analyzePaycheckCase(paycheckId, null, locale, workplace);
+        AgentPaycheckResponse agentResponse = aiAgentService.analyzePaycheckCase(paycheckId, null, locale, workplace, finding);
 
         return PaycheckExplainResponse.builder()
                 .paycheckId(paycheckId)
