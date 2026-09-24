@@ -19,6 +19,8 @@ public enum ErrorCode {
     FILE_UPLOAD_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_UPLOAD_ERROR", "파일 업로드 중 오류가 발생했습니다."),
     OCR_PROCESSING_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "OCR_PROCESSING_ERROR", "OCR 처리 중 오류가 발생했습니다."),
     AI_PROCESSING_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "AI_PROCESSING_ERROR", "AI 분석 중 오류가 발생했습니다."),
+    RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMIT_EXCEEDED", "요청 횟수 제한을 초과했습니다. 잠시 후 다시 시도해 주세요."),
+    PROMPT_INJECTION_DETECTED(HttpStatus.BAD_REQUEST, "PROMPT_INJECTION_DETECTED", "부적절하거나 유효하지 않은 지시문이 감지되었습니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "서버 내부 오류가 발생했습니다.");
 
     private final HttpStatus status;
