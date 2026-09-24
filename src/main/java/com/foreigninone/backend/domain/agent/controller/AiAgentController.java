@@ -44,13 +44,7 @@ public class AiAgentController {
         // [Pre-Filter 1] Rate Limit 검증 (LLM06, ASI10 - Wallet DoS 차단)
         guardrailService.checkRateLimit(clientKey, userId, "/api/agent/chat");
 
-        // [Pre-Filter 2] 입력 비가시 유니코드 및 제어 문자 살균
-        String sanitizedQuestion = guardrailService.sanitizeInput(request.getQuestion());
-
-        // [Pre-Filter 3] 악성 프롬프트 인젝션 및 탈옥 패턴 검사 (LLM01, ASI01)
-        guardrailService.validatePromptInjection(clientKey, userId, sanitizedQuestion, "/api/agent/chat");
-
-        AgentChatResponse response = aiAgentService.answerChatQuestion(userId, sanitizedQuestion, request.getLocale(), clientKey);
+        AgentChatResponse response = aiAgentService.answerChatQuestion(userId, request.getQuestion(), request.getLocale(), clientKey);
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
 }

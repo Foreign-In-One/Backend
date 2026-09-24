@@ -4,17 +4,17 @@ import com.foreigninone.backend.common.exception.BusinessException;
 import com.foreigninone.backend.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.regex.Pattern;
 
 /**
  * NIST AI RMF (MANAGE 기능) 및 OWASP Top 10 통합 가드레일 서비스
- * - Pre-Filter: 호출 빈도 제어(Rate Limit), 비가시 유니코드 살균, 프롬프트 인젝션 패턴 차단
- * - Payload Sanitizer: PII(주민/외국인번호, 연락처, 실명, 회사명) 실시간 비식별화
- * - Post-Filter: 카나리아 토큰(Canary Token) 검증을 통한 시스템 프롬프트 유출 차단
+ * - Pre-Filter: 호출 빈도 제어(Rate Limit)
+ * - Input Guard: 보안 서버(NeMo Guardrails 인젝션 분류 + Presidio PII 비식별화) 호출
+ * - Post-Filter: 카나리아 토큰(Canary Token) 생성 및 보안 서버 출력 검증으로 시스템 프롬프트 유출 차단
  */
 @Slf4j
 @Service
@@ -22,39 +22,21 @@ import java.util.regex.Pattern;
 public class AiAgentGuardrailService {
 
     private final AiAgentAuditLogger auditLogger;
+    private final SecurityServerClient securityServerClient;
+
+    @Value("${paycycle.redteam.enabled:false}")
+    private boolean redteamEnabled;
 
     // Rate Limiter 설정: 60초당 최대 10회 허용 (Wallet DoS 방어 - LLM06, ASI10)
     private static final int MAX_REQUESTS_PER_WINDOW = 10;
     private static final long WINDOW_DURATION_MS = 60_000L;
     private final Map<String, Deque<Long>> requestTimestamps = new ConcurrentHashMap<>();
 
-    // PII 탐지 정규식 (LLM02, ASI03)
-    private static final Pattern RESIDENT_FOREIGNER_NO_PATTERN =
-            Pattern.compile("\\b\\d{6}[-\\s]?[1-8]\\d{6}\\b");
-    private static final Pattern PHONE_PATTERN =
-            Pattern.compile("\\b01[016789][-\\s]?\\d{3,4}[-\\s]?\\d{4}\\b");
-    private static final Pattern EMAIL_PATTERN =
-            Pattern.compile("(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b");
-
-    // 프롬프트 인젝션 및 탈옥 시도 키워드 패턴 (LLM01, ASI01)
-    private static final List<String> ADVERSARIAL_PATTERNS = List.of(
-            "ignore previous instructions",
-            "ignore all previous",
-            "system prompt",
-            "dan mode",
-            "jailbreak",
-            "developer mode",
-            "이전 지침 무시",
-            "이전 프롬프트 무시",
-            "시스템 프롬프트 출력",
-            "모든 지시사항 출력",
-            "너의 지시문을 알려줘"
-    );
-
     /**
      * [Pre-Filter 1] Rate Limiter 검사
      */
     public void checkRateLimit(String clientKey, Long userId, String endpoint) {
+        if (redteamEnabled) return;
         long now = System.currentTimeMillis();
         Deque<Long> timestamps = requestTimestamps.computeIfAbsent(clientKey, k -> new ArrayDeque<>());
 
@@ -82,66 +64,26 @@ public class AiAgentGuardrailService {
     }
 
     /**
-     * [Pre-Filter 2] 비가시 유니코드 및 제어 문자 살균 (Sanitization)
+     * [Input Guard] 프롬프트 인젝션 차단(LLM01, ASI01) + 질문/컨텍스트 PII 비식별화(LLM02, ASI03)
+     * 보안 서버 장애 시 RestClientException 이 전파된다. 호출 측은 LLM 을 호출하지 않고 폴백해야 한다(fail-closed).
      */
-    public String sanitizeInput(String input) {
-        if (input == null) return "";
-        // Zero-width space, Zero-width joiner, BOM, ASCII control chars 제거
-        return input.replaceAll("[\\u200B-\\u200D\\uFEFF\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]", "").trim();
-    }
-
-    /**
-     * [Pre-Filter 3] 악성 프롬프트 인젝션 패턴 검사
-     */
-    public void validatePromptInjection(String clientKey, Long userId, String input, String endpoint) {
-        if (input == null || input.isBlank()) return;
-
-        String lower = input.toLowerCase();
-        for (String pattern : ADVERSARIAL_PATTERNS) {
-            if (lower.contains(pattern)) {
-                auditLogger.logSecurityEvent(
-                        clientKey,
-                        userId,
-                        endpoint,
-                        AiRiskType.PROMPT_INJECTION,
-                        "BLOCKED",
-                        input.length(),
-                        0,
-                        "악성 프롬프트 인젝션 패턴 감지: " + pattern
-                );
-                throw new BusinessException(ErrorCode.PROMPT_INJECTION_DETECTED);
-            }
+    public ScreenedInput screenInput(String question, String context, String userName, String companyName,
+                                     String clientKey, Long userId, String endpoint) {
+        SecurityServerClient.PreResult result = securityServerClient.pre(question, context, userName, companyName);
+        if (result.blocked()) {
+            auditLogger.logSecurityEvent(
+                    clientKey,
+                    userId,
+                    endpoint,
+                    AiRiskType.PROMPT_INJECTION,
+                    "BLOCKED",
+                    question.length(),
+                    0,
+                    "보안 서버 입력 가드 차단: " + result.reason()
+            );
+            throw new BusinessException(ErrorCode.PROMPT_INJECTION_DETECTED);
         }
-    }
-
-    /**
-     * [Payload Sanitizer] 민감 정보(PII) 가명화 및 마스킹 처리
-     */
-    public String anonymizePii(String text, String userName, String companyName) {
-        if (text == null || text.isBlank()) return "";
-
-        String sanitized = text;
-
-        // 주민등록번호 / 외국인등록번호 마스킹
-        sanitized = RESIDENT_FOREIGNER_NO_PATTERN.matcher(sanitized).replaceAll("[등록번호 비식별화]");
-
-        // 휴대전화번호 마스킹
-        sanitized = PHONE_PATTERN.matcher(sanitized).replaceAll("[연락처 비식별화]");
-
-        // 이메일 마스킹
-        sanitized = EMAIL_PATTERN.matcher(sanitized).replaceAll("[이메일 비식별화]");
-
-        // 실명 가명화
-        if (userName != null && !userName.isBlank() && sanitized.contains(userName)) {
-            sanitized = sanitized.replace(userName, "[근로자 본인]");
-        }
-
-        // 사업장명 가명화
-        if (companyName != null && !companyName.isBlank() && sanitized.contains(companyName)) {
-            sanitized = sanitized.replace(companyName, "[소속 사업장]");
-        }
-
-        return sanitized;
+        return new ScreenedInput(result.sanitizedQuestion(), result.sanitizedContext());
     }
 
     /**
@@ -158,7 +100,7 @@ public class AiAgentGuardrailService {
     public boolean verifyOutputSafe(String output, String canaryToken, String clientKey, Long userId, String endpoint) {
         if (output == null) return true;
 
-        if (output.contains(canaryToken) || output.contains("CANARY_SEC_")) {
+        if (securityServerClient.post(output, canaryToken).blocked()) {
             auditLogger.logSecurityEvent(
                     clientKey,
                     userId,
@@ -174,4 +116,6 @@ public class AiAgentGuardrailService {
 
         return true;
     }
+
+    public record ScreenedInput(String question, String context) {}
 }

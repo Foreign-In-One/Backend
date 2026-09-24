@@ -1,0 +1,5 @@
+# garak 레드티밍 전용. 실행: SPRING_PROFILES_ACTIVE=local,redteam
+# rate limit 비활성화 (공격 내용과 무관한 429 차단이 측정을 오염시키지 않도록)
+paycycle:
+  redteam:
+    enabled: true

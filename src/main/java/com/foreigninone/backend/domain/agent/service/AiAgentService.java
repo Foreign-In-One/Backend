@@ -24,6 +24,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -917,14 +918,23 @@ public class AiAgentService {
                 ? requestLocale.trim().toLowerCase()
                 : ((user.getLanguage() != null && !user.getLanguage().isBlank()) ? user.getLanguage().trim().toLowerCase() : "ko");
 
+        // [Input Guard] 인젝션 차단 시 BusinessException(400) 전파. 보안 서버 장애 시 LLM 미호출 폴백(fail-closed)
+        AiAgentGuardrailService.ScreenedInput screened;
+        try {
+            screened = guardrailService.screenInput(question, buildChatContext(user), user.getName(), user.getCompanyName(),
+                    clientKey, userId, "/api/agent/chat");
+        } catch (RestClientException e) {
+            log.warn("Security server unavailable, chat question will fall back to client rule engine: {}", e.getMessage());
+            return AgentChatResponse.builder().ok(false).text(null).error(null).build();
+        }
+
         if (!openAiProperties.isConfigured()) {
             log.info("OpenAI API key not configured, chat question will fall back to client rule engine for userId: {}", userId);
             return AgentChatResponse.builder().ok(false).text(null).error(null).build();
         }
 
         try {
-            String context = buildChatContext(user);
-            String content = callOpenAiChat(context, question, effectiveLocale, userId, clientKey);
+            String content = callOpenAiChat(screened.context(), screened.question(), effectiveLocale, userId, clientKey);
             return AgentChatResponse.builder().ok(true).text(content).error(null).build();
         } catch (Exception e) {
             log.warn("OpenAI chat call failed, falling back to client rule engine: {}", e.getMessage());
@@ -961,9 +971,7 @@ public class AiAgentService {
                 () -> sb.append("출국 정산 확인 기록: 없음\n")
         );
 
-        String rawContext = sb.toString();
-        // NIST AI RMF (MANAGE) & OWASP LLM02, ASI03: PII 가명화 처리
-        return guardrailService.anonymizePii(rawContext, user.getName(), user.getCompanyName());
+        return sb.toString();
     }
 
     private Integer monthsWorked(java.time.LocalDate workStartDate) {
