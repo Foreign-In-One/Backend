@@ -1,0 +1,9 @@
+.venv*/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env*
+
+# garak 원본 결과(실제 LLM 응답 포함)와 실행 로그는 보관하지 않고 summary.md만 커밋
+redteam/results/*/
+redteam/*.log

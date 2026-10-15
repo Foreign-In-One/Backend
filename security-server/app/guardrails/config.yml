@@ -1,0 +1,8 @@
+rails:
+  input:
+    flows:
+      - check encoded payload
+      - check prompt injection
+  output:
+    flows:
+      - check canary leak

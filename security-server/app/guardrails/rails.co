@@ -1,0 +1,23 @@
+define subflow check encoded payload
+  $is_encoded = execute detect_encoded_payload(text=$user_message)
+  if $is_encoded
+    bot refuse encoded
+    stop
+
+define subflow check prompt injection
+  $is_injection = execute detect_injection(text=$user_message)
+  if $is_injection
+    bot refuse
+    stop
+
+define subflow check canary leak
+  $leaked = execute detect_canary_leak(text=$bot_message, canary=$canary)
+  if $leaked
+    bot refuse
+    stop
+
+define bot refuse
+  "__PAYCYCLE_BLOCKED__"
+
+define bot refuse encoded
+  "__PAYCYCLE_BLOCKED_ENCODED__"
