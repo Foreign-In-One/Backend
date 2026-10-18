@@ -35,7 +35,8 @@ Front → Backend /api/agent/chat
 | `security-server/app/` | FastAPI 보안 서버 (`/guard/pre`, `/guard/post`) |
 | `security-server/app/guardrails/` | NeMo Guardrails 레일 정의 (Colang 1.0) |
 | `security-server/tests/` | 보안 서버 단위 테스트 |
-| `security-server/redteam/` | garak 레드티밍 실행·분석 스크립트, 정상 질문 세트, 결과 요약 |
+| `security-server/redteam/` | garak 레드티밍 실행·분석 스크립트, 웹 경로 재측정, 정상 질문 세트, 결과 요약 |
+| `security-server/compliance/` | 금융보안원 AI 챗봇 보안성 체크리스트 판정표, 적합률 산출 스크립트 |
 
 ### 설계 결정
 - 인젝션 분류기 선정: 영어 전용 분류기의 정상 질문 오탐 확인(선정 세트 10/24, 한국어 4/8·베트남어 4/5) → 다국어 분류기 `patronus-studio/wolf-defender-prompt-injection-small` 채택 (`redteam/compare_classifiers.py`)
@@ -60,6 +61,45 @@ garak 0.16.0, 적용 전 → 적용 후, 동일 프롬프트 대응 비교
 - p: 동일 프롬프트 전후 McNemar 정확 검정
 - 공격 성공률 감소는 통계적으로 유의하지 않음 (적용 전 성공률 자체가 낮음)
 - 상세 결과: `security-server/redteam/results/summary.md`
+
+### 웹 경로 재측정 (프론트엔드 우회로 발견·수정)
+- 발견: 백엔드 차단·장애 시 Front가 Next.js 내부 route로 같은 질문 재전송, 해당 route는 문구 10종 차단 수준
+- 측정: 백엔드가 차단한 공격 513건을 수정 전 내부 route에 재입력, 가짜 LLM으로 호출 횟수 집계 (`redteam/web_path.mjs`)
+- 결과: 513건 중 411건 내부 route 통과
+
+| 구분 | 백엔드 직접 호출 | 웹 경로, Front 수정 전 | 웹 경로, Front 수정 후 |
+|---|---|---|---|
+| 설계 대상 579건 LLM 도달률 | 23.8% | 82.4% | 23.8% |
+| held-out 128건 LLM 도달률 | 43.8% | 100% | 43.8% |
+
+- 수정 전 웹 경로 82.4%: 보안 서버 적용 전 기준선과 동일, 사용자 화면 기준 보안 서버 효과 상실 상태
+- 수정: Front `feature/ai-chat-guardrail` (`c7d2b74`), 백엔드 차단·장애 시 규칙 엔진 응답, 내부 LLM route 제거
+- 상세 결과: `security-server/redteam/results/web_path.md`
+
+### 국내 규격 대응 (금융보안원 AI 챗봇서비스 보안성 체크리스트)
+기준: 금융보안원 「금융분야 AI 보안 가이드라인」(2023.4) 별첨 체크리스트 33개 항목, 해당 없음 11개 제외 22개 항목 자체 판정
+
+| 구분 | 항목 수 | 작업 전 | 현재 |
+|---|---|---|---|
+| 전체 적용 항목 | 22 | 6.8% | 36.4% |
+| 이번 AI 보안 작업 대상 항목 | 9 | 0% | 66.7% |
+| 운영 통제 항목 (계정·암호화·백업·패치 등) | 13 | 11.5% | 15.4% |
+
+- 적합률: (충족 + 0.5 × 부분) / 적용 항목 수
+- 충족: 오픈 전 보안점검(4), 위험관리(16), API 보안대책(31, 우회 경로 제거로 충족)
+- 해당 없음: 자체 학습 없음(19~22), 클라우드 챗봇 플랫폼 미사용(26~29), 개인정보 미처리 챗봇 전제 항목(6·7), 관리자 시스템 없음(11)
+- 주요 미충족: 역할별 계정(1), 저장 데이터 암호화(9·10), 모델 무결성 검증(23), 백업·패치·악성코드 대책(12~14)
+- 다음 개선 예상치: JWT 인증·역할(1), 분류기 리비전 고정·해시 검증(23), 정기 레드팀 CI(5), 의존성 취약점 스캔(14), SBOM(30) 반영 시 52.3%
+- 판정표·산출 스크립트: `security-server/compliance/` (`fsec_ai_chatbot_checklist.csv`, `score.py`, `score.md`)
+
+금융보안원 「금융분야 AI 에이전트 보안 평가기준」(2026.10, 5개 분야 17개 항목, 세부 항목 비공개) 분야별 대응
+| 분야 | 대응 |
+|---|---|
+| 데이터 오염 (메모리 오염 포함) | 무상태 설계, 자체 학습·대화 메모리 없음 |
+| 모델 오염 (공급망·외부 도구) | 미흡, 분류기 모델 리비전 미고정 |
+| 데이터·모델 추출 | 시스템 프롬프트 추출 도달률 75.0% → 4.2%, 카나리아 출력 검사 |
+| 회피 공격 | 인코딩·Zalgo·유니코드 태그 우회 실측, held-out 도달률 100% → 43.8% |
+| AI 에이전트 보안 (권한·도구·자율 실행) | 도구 호출 없음, 계산은 규칙 엔진 전담 |
 
 ### 실행
 보안 서버
@@ -89,6 +129,6 @@ python -m venv .venv
 ### 관련 오픈소스 기여
 레드티밍과 가드레일 구현 과정에서 발견한 문제의 원 프로젝트 보고·수정
 - Presidio: 한국어 컨텍스트 매칭 옵션 [PR #2341](https://github.com/data-privacy-stack/presidio/pull/2341), 한국 계좌번호 인식기 보완 커밋 4건 ([PR #2215](https://github.com/data-privacy-stack/presidio/pull/2215))
-- garak: promptinject 프로브 중복 프롬프트 수정 [이슈 #2304](https://github.com/NVIDIA/garak/issues/2304), [PR #2305](https://github.com/NVIDIA/garak/pull/2305)
+- garak: promptinject 프로브 중복 프롬프트 수정 [이슈 #2304](https://github.com/NVIDIA/garak/issues/2304), [PR #2305](https://github.com/NVIDIA/garak/pull/2305) / 번역 프로브 간 페이로드 오염 수정 [이슈 #2325](https://github.com/NVIDIA/garak/issues/2325), [PR #2326](https://github.com/NVIDIA/garak/pull/2326)
 - NeMo Guardrails: Presidio 언어·모델 설정 [이슈 #2415](https://github.com/NVIDIA-NeMo/Guardrails/issues/2415), 비 UTF-8 환경 설정 파일 로딩 오류 [이슈 #2429](https://github.com/NVIDIA-NeMo/Guardrails/issues/2429)
 - [presidio-ko](https://github.com/Bin0917/presidio-ko): 한국 전화번호·계좌번호 인식기, 한국어 컨텍스트 강화기 패키지
