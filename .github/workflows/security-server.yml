@@ -1,0 +1,33 @@
+name: security-server
+
+# 보안 서버 단위 테스트 + 가드 회귀 점검(정상 질문 60건 통과, 알려진 공격 12건 차단, 분류기 모델 무결성)
+# 정기 실행(schedule)은 기본 브랜치에 병합된 뒤부터 동작
+on:
+  push:
+    paths:
+      - "security-server/**"
+      - ".github/workflows/security-server.yml"
+  schedule:
+    - cron: "0 0 * * 1" # 매주 월요일 09:00 KST
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: security-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: security-server/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python -m spacy download en_core_web_sm
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ hashFiles('security-server/app/guard.py') }}
+      - run: python -m pytest tests -q

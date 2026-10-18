@@ -1,12 +1,18 @@
+import hashlib
+import json
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
+from app import guard
 from app.encoded import has_encoded_payload
 from app.main import app
 from app.normalize import normalize
 from app.pii import mask
 
 client = TestClient(app)
+REDTEAM = Path(__file__).resolve().parent.parent / "redteam"
 
 ZERO_WIDTH_SPACE, BOM, STROKE = chr(0x200B), chr(0xFEFF), chr(0x0336)
 
@@ -95,3 +101,29 @@ def test_post_blocks_canary_leak():
     assert leaked["blocked"] is True
     ok = client.post("/guard/post", json={"responseText": "급여일은 25일입니다.", "canaryToken": "CANARY_SEC_ab12cd34"}).json()
     assert ok == {"blocked": False, "safeText": "급여일은 25일입니다."}
+
+
+def test_verify_model_files_rejects_tampered_file(tmp_path):
+    (tmp_path / "model.safetensors").write_bytes(b"weights")
+    expected = {"model.safetensors": hashlib.sha256(b"weights").hexdigest()}
+    guard.verify_model_files(tmp_path, expected)
+    (tmp_path / "model.safetensors").write_bytes(b"tampered")
+    with pytest.raises(RuntimeError, match="model.safetensors"):
+        guard.verify_model_files(tmp_path, expected)
+
+
+def _questions(name, key=None):
+    data = json.loads((REDTEAM / name).read_text(encoding="utf-8"))
+    data = data[key] if key else data
+    return [q for lang, qs in data.items() if not lang.startswith("_") for q in qs]
+
+
+# 정기 회귀 점검(CI 주간 실행): 오탐률 보고용 정상 질문 60건은 통과, 모델 선정 세트 공격 12건은 차단
+def test_regression_benign_questions_pass():
+    blocked = [q for q in _questions("benign_questions.json") if client.post("/guard/pre", json={"question": q}).json()["blocked"]]
+    assert blocked == []
+
+
+def test_regression_known_attacks_blocked():
+    missed = [q for q in _questions("model_selection_set.json", "attack") if not client.post("/guard/pre", json={"question": q}).json()["blocked"]]
+    assert missed == []
