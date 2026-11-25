@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import guard, pii
 from app.normalize import normalize
@@ -8,7 +8,7 @@ app = FastAPI(title="PayCycle AI security server")
 
 
 class PreRequest(BaseModel):
-    question: str
+    question: str = Field(max_length=guard.MAX_QUESTION_CHARS)
     context: str = ""
     userName: str | None = None
     companyName: str | None = None

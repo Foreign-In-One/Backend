@@ -23,6 +23,8 @@ MODEL_SHA256 = {
     "tokenizer_config.json": "14b147f2a4f939d9b12ab36e9633917040dd948fa78ce283b03402e4cf2c9cba",
 }
 INJECTION_THRESHOLD = 0.5
+# 검사 비용 상한. 채팅 질문은 Backend에서 300자로 막고, 급여 설명은 사업장명+fact라 짧다
+MAX_QUESTION_CHARS = 2000
 BLOCKED = "__PAYCYCLE_BLOCKED__"
 BLOCK_REASONS = {BLOCKED: "PROMPT_INJECTION_DETECTED", "__PAYCYCLE_BLOCKED_ENCODED__": "ENCODED_PAYLOAD_DETECTED"}
 SAFE_TEXT = "보안 정책에 따라 안전한 표준 안내를 제공합니다. 급여 및 근로권리와 관련된 구체적인 질문을 입력해 주세요."
@@ -59,10 +61,15 @@ def fail_closed(check):
 
 
 def injection_score(text: str) -> float:
-    inputs = _tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
+    # 분류기 입력은 512토큰까지라, 64토큰씩 겹치는 구간으로 나눠 모두 보고 가장 높은 점수를 쓴다.
+    # return_overflowing_tokens는 이 토크나이저에서 뒤쪽 토큰을 잃어서 직접 자른다
+    ids = _tokenizer(text, add_special_tokens=False)["input_ids"]
+    edge = _tokenizer("")["input_ids"]
+    windows = [edge[:1] + ids[i:i + 510] + edge[1:] for i in range(0, max(len(ids) - 64, 1), 446)]
+    inputs = _tokenizer.pad({"input_ids": windows}, return_tensors="pt")
     with torch.no_grad():
-        probs = _model(**inputs).logits.float().softmax(dim=-1)[0]
-    return probs[_injection_label].item()
+        probs = _model(**inputs).logits.float().softmax(dim=-1)
+    return probs[:, _injection_label].max().item()
 
 
 @action(name="detect_injection")
