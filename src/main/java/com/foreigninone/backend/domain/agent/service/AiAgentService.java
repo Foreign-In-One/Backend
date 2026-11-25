@@ -69,11 +69,7 @@ public class AiAgentService {
         FindingInfo findingInfo = extractFindingInfo(finding);
         PaycheckCaseType caseType = inputCaseType != null ? inputCaseType : determineCaseType(paycheck, findingInfo);
 
-        String effectiveLocale = (requestLocale != null && !requestLocale.isBlank())
-                ? requestLocale.trim().toLowerCase()
-                : ((user != null && user.getLanguage() != null && !user.getLanguage().isBlank())
-                ? user.getLanguage().trim().toLowerCase()
-                : "ko");
+        String effectiveLocale = resolveLocale(requestLocale, user != null ? user.getLanguage() : null);
 
         String effectiveWorkplace = (requestWorkplace != null && !requestWorkplace.isBlank())
                 ? requestWorkplace.trim()
@@ -932,6 +928,21 @@ public class AiAgentService {
         }
     }
 
+    // locale은 시스템 프롬프트에 그대로 들어가므로 언어 코드 형태(ko, en, zh-cn 등)만 받는다
+    private static final java.util.regex.Pattern LOCALE_CODE = java.util.regex.Pattern.compile("[a-z]{2,3}(-[a-z]{2,4})?");
+
+    static String resolveLocale(String requested, String userLanguage) {
+        for (String candidate : new String[]{requested, userLanguage}) {
+            if (candidate != null) {
+                String code = candidate.trim().toLowerCase(java.util.Locale.ROOT);
+                if (LOCALE_CODE.matcher(code).matches()) {
+                    return code;
+                }
+            }
+        }
+        return "ko";
+    }
+
     /**
      * 금융권리 챗봇 질문 응답.
      * OpenAI가 설정돼 있으면 서버가 직접 조회한 사용자 데이터를 컨텍스트로 실제 답변을 생성하고,
@@ -947,9 +958,7 @@ public class AiAgentService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        String effectiveLocale = (requestLocale != null && !requestLocale.isBlank())
-                ? requestLocale.trim().toLowerCase()
-                : ((user.getLanguage() != null && !user.getLanguage().isBlank()) ? user.getLanguage().trim().toLowerCase() : "ko");
+        String effectiveLocale = resolveLocale(requestLocale, user.getLanguage());
 
         // [Input Guard] 인젝션 차단 시 BusinessException(400) 전파. 보안 서버 장애 시 LLM 미호출 폴백(fail-closed)
         AiAgentGuardrailService.ScreenedInput screened;
