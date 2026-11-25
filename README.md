@@ -21,7 +21,7 @@ Front → Backend /api/agent/chat
   4. 보안 서버 /guard/post: 카나리아 토큰 유출 검사, 유출 시 안전 안내문 대체
   5. 보안 이벤트 감사 로그 기록 (위험 유형별 JSON)
 ```
-- 보안 서버 장애 시 LLM 미호출 (fail-closed)
+- 보안 서버 장애·검사 오류 시 LLM 미호출 (fail-closed)
 - 급여 설명(`/api/paychecks/{id}/explain`)도 같은 2·4단계 적용: 요청 값(사업장명·finding.fact) 인젝션 검사, 프롬프트 비식별화, 카나리아 출력 검사
 
 ### 구성 요소

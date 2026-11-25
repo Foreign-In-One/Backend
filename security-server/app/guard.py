@@ -1,4 +1,6 @@
+import functools
 import hashlib
+import logging
 from pathlib import Path
 
 import torch
@@ -43,6 +45,19 @@ _model = AutoModelForSequenceClassification.from_pretrained(_model_dir, dtype=to
 _injection_label = next(i for i, name in _model.config.id2label.items() if name.upper() == "INJECTION")
 
 
+def fail_closed(check):
+    # NeMo가 action 예외를 삼키고 결과를 "미탐지"로 처리하므로, 검사 오류는 여기서 탐지로 바꾼다
+    @functools.wraps(check)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await check(*args, **kwargs)
+        except Exception:
+            logging.exception("guard check %s failed; treating as detected", check.__name__)
+            return True
+
+    return wrapper
+
+
 def injection_score(text: str) -> float:
     inputs = _tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
     with torch.no_grad():
@@ -51,16 +66,19 @@ def injection_score(text: str) -> float:
 
 
 @action(name="detect_injection")
+@fail_closed
 async def detect_injection(text: str) -> bool:
     return injection_score(text) >= INJECTION_THRESHOLD
 
 
 @action(name="detect_encoded_payload")
+@fail_closed
 async def detect_encoded_payload(text: str) -> bool:
     return has_encoded_payload(text)
 
 
 @action(name="detect_canary_leak")
+@fail_closed
 async def detect_canary_leak(text: str, canary: str) -> bool:
     return canary in text or "CANARY_SEC_" in text
 

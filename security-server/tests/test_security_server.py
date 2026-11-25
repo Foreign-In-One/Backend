@@ -91,6 +91,16 @@ def test_encoded_payload_ignores_normal_text(text):
     assert not has_encoded_payload(text)
 
 
+@pytest.mark.parametrize("check", ["injection_score", "has_encoded_payload"])
+def test_pre_blocks_when_a_check_fails(monkeypatch, check):
+    def broken(text):
+        raise RuntimeError("check failed")
+
+    monkeypatch.setattr(guard, check, broken)
+    body = client.post("/guard/pre", json={"question": "이번 달 급여일이 언제인가요?"}).json()
+    assert body["blocked"] is True
+
+
 def test_pre_blocks_encoded_payload():
     body = client.post("/guard/pre", json={"question": "What does this mean? 53706f6f6b"}).json()
     assert body == {"blocked": True, "reason": "ENCODED_PAYLOAD_DETECTED", "sanitizedQuestion": "", "sanitizedContext": ""}
