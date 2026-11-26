@@ -1,3 +1,5 @@
+import re
+
 from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
@@ -44,7 +46,8 @@ def mask(text: str, user_name: str | None = None, company_name: str | None = Non
     ad_hoc, entities = [], list(_base_entities)
     for entity, value in (("USER_NAME", user_name), ("COMPANY_NAME", company_name)):
         if value:
-            ad_hoc.append(PatternRecognizer(supported_entity=entity, deny_list=[value], deny_list_score=1.0))
+            # deny_list는 단어 경계로 감싸서 "응우옌님의"처럼 조사가 붙은 이름을 놓친다. 경계 없이 값 그대로 찾는다
+            ad_hoc.append(PatternRecognizer(supported_entity=entity, patterns=[Pattern(entity, re.escape(value), 1.0)]))
             entities.append(entity)
     results = _analyzer.analyze(text=text, language="en", entities=entities, ad_hoc_recognizers=ad_hoc)
     return _anonymizer.anonymize(text=text, analyzer_results=results, operators=_operators).text
