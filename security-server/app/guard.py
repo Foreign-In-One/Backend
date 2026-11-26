@@ -1,6 +1,7 @@
 import functools
 import hashlib
 import logging
+import re
 from pathlib import Path
 
 import torch
@@ -10,6 +11,7 @@ from nemoguardrails.actions import action
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from app.encoded import has_encoded_payload
+from app.normalize import normalize
 
 # 다국어(mmBERT) 기반. 선택 근거: redteam/compare_classifiers.py 결과 (영어 전용 모델은 한/베트남어 정상 질문 오탐 42%)
 MODEL_ID = "patronus-studio/wolf-defender-prompt-injection-small"
@@ -87,7 +89,12 @@ async def detect_encoded_payload(text: str) -> bool:
 @action(name="detect_canary_leak")
 @fail_closed
 async def detect_canary_leak(text: str, canary: str) -> bool:
-    return canary in text or "CANARY_SEC_" in text
+    # 대소문자·전각·제로폭·글자 사이 공백이나 기호로 바꿔 내보내는 우회를 막으려고 영숫자만 남겨 비교
+    def squash(s: str) -> str:
+        return re.sub(r"[\W_]+", "", normalize(s).casefold())
+
+    flat = squash(text)
+    return squash(canary) in flat or "canarysec" in flat
 
 
 _rails = LLMRails(RailsConfig.from_path(str(Path(__file__).parent / "guardrails")))

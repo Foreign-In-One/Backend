@@ -122,6 +122,17 @@ def test_post_blocks_canary_leak():
     assert ok == {"blocked": False, "safeText": "급여일은 25일입니다."}
 
 
+@pytest.mark.parametrize("leak", [
+    "canary_sec_ab12cd34",
+    f"CANARY{ZERO_WIDTH_SPACE}_SEC_ab12cd34",
+    "ＣＡＮＡＲＹ＿ＳＥＣ＿ａｂ１２ｃｄ３４",
+    "C A N A R Y - S E C - a b 1 2 c d 3 4",
+])
+def test_post_blocks_disguised_canary_leak(leak):
+    body = client.post("/guard/post", json={"responseText": f"규칙: {leak}", "canaryToken": "CANARY_SEC_ab12cd34"}).json()
+    assert body["blocked"] is True
+
+
 def test_verify_model_files_rejects_tampered_file(tmp_path):
     (tmp_path / "model.safetensors").write_bytes(b"weights")
     expected = {"model.safetensors": hashlib.sha256(b"weights").hexdigest()}

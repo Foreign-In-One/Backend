@@ -281,11 +281,12 @@ public class AiAgentService {
 
         JsonNode root = objectMapper.readTree(responseJson);
         String content = root.path("choices").get(0).path("message").path("content").asText();
-        // [Post-Filter 2] 카나리아 유출 시 LLM 출력 대신 규칙 기반 설명
-        if (!guardrailService.verifyOutputSafe(content, canaryToken, clientKey, userId, endpoint)) {
+        JsonNode resultNode = objectMapper.readTree(content);
+        // [Post-Filter 2] 카나리아 유출 시 LLM 출력 대신 규칙 기반 설명.
+        // JSON 이스케이프로 토큰을 숨길 수 있어 원문이 아니라 파싱한(화면에 보일) 값으로 검사한다
+        if (!guardrailService.verifyOutputSafe(resultNode.toString(), canaryToken, clientKey, userId, endpoint)) {
             return generateMockAgentResponse(paycheck, user, caseType, effectiveLocale, effectiveWorkplace, findingInfo);
         }
-        JsonNode resultNode = objectMapper.readTree(content);
 
         String headline = resultNode.path("headline").asText(null);
         String summary = resultNode.path("summary").asText(null);
